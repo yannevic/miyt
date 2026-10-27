@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Baloo 2", system-ui, sans-serif;
+
+  /* base herdada do Leafnote */
+  --color-leaf-950: #1A2A1A;
+  --color-leaf-800: #2D4A2D;
+  --color-leaf-600: #4A7A4A;
+  --color-leaf-400: #7FB87F;
+  --color-leaf-100: #E8F5E8;
+  --color-bark-700: #8B6914;
+  --color-bark-100: #F5ECD7;
+  --color-wood-400: #C4956A;
+  --color-wood-300: #D4AA80;
+  --color-soil-900: #2C1810;
+
+  /* Nana (rosa pastel) */
+  --color-petal-600: #C77A8F;
+  --color-petal-400: #E8A0B0;
+  --color-petal-200: #F5D5DC;
+
+  /* Miguel (roxo pastel) */
+  --color-lilac-600: #8468C0;
+  --color-lilac-400: #B9A3E3;
+  --color-lilac-200: #E3D9F5;
+}
