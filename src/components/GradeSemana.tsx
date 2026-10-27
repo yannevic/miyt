@@ -16,6 +16,8 @@ const refeicoes = [
 const colunas = 'grid grid-cols-[6rem_repeat(7,1fr)] gap-2'
 
 export function GradeSemana({ dias }: GradeSemanaProps) {
+  const hoje = new Date().toDateString()
+
   return (
     <div className='flex flex-col gap-2 p-4'>
       <div className={colunas}>
@@ -23,7 +25,11 @@ export function GradeSemana({ dias }: GradeSemanaProps) {
         {dias.map((data, i) => (
           <div
             key={data.toISOString()}
-            className='rounded-xl bg-white/60 p-2 text-center text-leaf-800'
+            className={
+              data.toDateString() === hoje
+                ? 'rounded-xl bg-petal-200 p-2 text-center text-leaf-800 ring-2 ring-petal-600'
+                : 'rounded-xl bg-white/60 p-2 text-center text-leaf-800'
+            }
           >
             <p className='font-bold'>{nomesDias[i]}</p>
             <p className='text-sm'>{formatarDiaMes(data)}</p>
@@ -39,7 +45,11 @@ export function GradeSemana({ dias }: GradeSemanaProps) {
           {dias.map((data) => (
             <div
               key={data.toISOString()}
-              className='min-h-20 rounded-xl bg-white/60'
+              className={
+                data.toDateString() === hoje
+                  ? 'min-h-20 rounded-xl bg-petal-200/50 ring-2 ring-petal-600'
+                  : 'min-h-20 rounded-xl bg-white/60'
+              }
             ></div>
           ))}
         </div>
