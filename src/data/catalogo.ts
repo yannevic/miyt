@@ -1,0 +1,65 @@
+export type CategoriaId =
+  | 'base'
+  | 'proteina'
+  | 'salada-legumes'
+  | 'fruta'
+  | 'bebida'
+  | 'outros'
+
+export type Categoria = {
+  id: CategoriaId
+  nome: string
+  cor: string
+}
+
+export type ItemCatalogo = {
+  id: string
+  nome: string
+  categoria: CategoriaId
+  icone: string
+}
+
+export const categorias: Categoria[] = [
+  { id: 'base', nome: 'Base', cor: '#E9D8A6' },
+  { id: 'proteina', nome: 'Proteína', cor: '#D9936B' },
+  { id: 'salada-legumes', nome: 'Salada e legumes', cor: '#7FB87F' },
+  { id: 'fruta', nome: 'Fruta', cor: '#F2C94C' },
+  { id: 'bebida', nome: 'Bebida', cor: '#8EC5E8' },
+  { id: 'outros', nome: 'Outros', cor: '#CFC6B8' },
+]
+
+export const catalogoInicial: ItemCatalogo[] = [
+  { id: 'arroz', nome: 'Arroz', categoria: 'base', icone: 'Wheat' },
+  { id: 'feijao', nome: 'Feijão', categoria: 'base', icone: 'Bean' },
+  { id: 'macarrao', nome: 'Macarrão', categoria: 'base', icone: 'Utensils' },
+  { id: 'pao', nome: 'Pão', categoria: 'base', icone: 'Croissant' },
+  { id: 'tapioca', nome: 'Tapioca', categoria: 'base', icone: 'Disc' },
+  { id: 'batata', nome: 'Batata', categoria: 'base', icone: 'Circle' },
+  { id: 'farofa', nome: 'Farofa', categoria: 'base', icone: 'Popcorn' },
+
+  { id: 'ovo', nome: 'Ovo', categoria: 'proteina', icone: 'Egg' },
+  { id: 'frango', nome: 'Frango', categoria: 'proteina', icone: 'Drumstick' },
+  { id: 'carne', nome: 'Carne', categoria: 'proteina', icone: 'Beef' },
+  { id: 'porco', nome: 'Porco', categoria: 'proteina', icone: 'Ham' },
+  { id: 'peixe', nome: 'Peixe', categoria: 'proteina', icone: 'Fish' },
+
+  { id: 'alface', nome: 'Alface', categoria: 'salada-legumes', icone: 'Salad' },
+  { id: 'tomate', nome: 'Tomate', categoria: 'salada-legumes', icone: 'Cherry' },
+  { id: 'cenoura', nome: 'Cenoura', categoria: 'salada-legumes', icone: 'Carrot' },
+  { id: 'brocolis', nome: 'Brócolis', categoria: 'salada-legumes', icone: 'Leaf' },
+
+  { id: 'banana', nome: 'Banana', categoria: 'fruta', icone: 'Banana' },
+  { id: 'maca', nome: 'Maçã', categoria: 'fruta', icone: 'Apple' },
+  { id: 'laranja', nome: 'Laranja', categoria: 'fruta', icone: 'Citrus' },
+  { id: 'uva', nome: 'Uva', categoria: 'fruta', icone: 'Grape' },
+
+  { id: 'cafe', nome: 'Café', categoria: 'bebida', icone: 'Coffee' },
+  { id: 'leite', nome: 'Leite', categoria: 'bebida', icone: 'Milk' },
+  { id: 'suco', nome: 'Suco', categoria: 'bebida', icone: 'CupSoda' },
+  { id: 'achocolatado', nome: 'Achocolatado', categoria: 'bebida', icone: 'GlassWater' },
+
+  { id: 'bolacha', nome: 'Bolacha', categoria: 'outros', icone: 'Cookie' },
+  { id: 'sanduiche', nome: 'Sanduíche', categoria: 'outros', icone: 'Sandwich' },
+  { id: 'pizza', nome: 'Pizza', categoria: 'outros', icone: 'Pizza' },
+  { id: 'rappi10', nome: 'Rappi10', categoria: 'outros', icone: 'Bike' },
+]
