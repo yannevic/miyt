@@ -1,11 +1,24 @@
 import { useState } from 'react'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
+import { chaveDia } from './utils/datas'
 import { GradeSemana } from './components/GradeSemana'
 import { Catalogo } from './components/Catalogo'
+import { CardapioRefeicao } from './components/CardapioRefeicao'
+import { ModalRefeicao } from './components/ModalRefeicao'
+import type { Planejamento, Refeicao } from './data/planejamento'
+import type { RefeicaoId, TipoRefeicao } from './data/refeicoes'
+
+type Edicao = {
+  data: Date
+  refeicao: TipoRefeicao
+  editar: boolean
+}
 
 function App() {
   const [tela, setTela] = useState<'semana' | 'catalogo'>('semana')
   const [dataBase, setDataBase] = useState(new Date())
+  const [planejamento, setPlanejamento] = useState<Planejamento>({})
+  const [editando, setEditando] = useState<Edicao | null>(null)
   const dias = diaDaSemana(dataBase)
 
   function mudarSemana(quantidade: number) {
@@ -13,6 +26,24 @@ function App() {
     nova.setDate(nova.getDate() + quantidade * 7)
     setDataBase(nova)
   }
+
+  function guardarRefeicao(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
+    const dia = chaveDia(data)
+    setPlanejamento((atual) => {
+      const doDia = { ...atual[dia] }
+      if (refeicao) {
+        doDia[id] = refeicao
+      } else {
+        delete doDia[id]
+      }
+      return { ...atual, [dia]: doDia }
+    })
+    setEditando(null)
+  }
+
+  const refeicaoAberta = editando
+    ? planejamento[chaveDia(editando.data)]?.[editando.refeicao.id]
+    : undefined
 
   const inicio = formatarDiaMes(dias[0])
   const fim = formatarDiaMes(dias[6])
@@ -67,7 +98,42 @@ function App() {
         )}
       </div>
 
-      {tela === 'semana' ? <GradeSemana dias={dias} /> : <Catalogo />}
+      {tela === 'semana' ? (
+        <GradeSemana
+          dias={dias}
+          planejamento={planejamento}
+          onAbrir={(data, refeicao) => {
+            const existe = Boolean(planejamento[chaveDia(data)]?.[refeicao.id])
+            setEditando({ data, refeicao, editar: !existe })
+          }}
+        />
+      ) : (
+        <Catalogo />
+      )}
+
+      {editando && refeicaoAberta && !editando.editar && (
+        <CardapioRefeicao
+          data={editando.data}
+          refeicao={editando.refeicao}
+          dados={refeicaoAberta}
+          onEditar={() => setEditando({ ...editando, editar: true })}
+          onFechar={() => setEditando(null)}
+        />
+      )}
+
+      {editando && (editando.editar || !refeicaoAberta) && (
+        <ModalRefeicao
+          key={chaveDia(editando.data) + editando.refeicao.id}
+          data={editando.data}
+          refeicao={editando.refeicao}
+          inicial={refeicaoAberta}
+          onSalvar={(refeicao) =>
+            guardarRefeicao(editando.data, editando.refeicao.id, refeicao)
+          }
+          onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
+          onFechar={() => setEditando(null)}
+        />
+      )}
     </div>
   )
 }
