@@ -33,18 +33,19 @@ export const catalogoInicial: ItemCatalogo[] = [
   { id: 'feijao', nome: 'Feijão', categoria: 'base', icone: 'Bean' },
   { id: 'macarrao', nome: 'Macarrão', categoria: 'base', icone: 'Utensils' },
   { id: 'pao', nome: 'Pão', categoria: 'base', icone: 'Croissant' },
-  { id: 'tapioca', nome: 'Tapioca', categoria: 'base', icone: 'Disc' },
-  { id: 'batata', nome: 'Batata', categoria: 'base', icone: 'Circle' },
-  { id: 'farofa', nome: 'Farofa', categoria: 'base', icone: 'Popcorn' },
+  { id: 'tapioca', nome: 'Tapioca', categoria: 'base', icone: 'Circle' },
+  { id: 'batata', nome: 'Batata', categoria: 'base', icone: 'GiPotato' },
+  { id: 'farofa', nome: 'Farofa', categoria: 'base', icone: 'GiBowlOfRice' },
 
   { id: 'ovo', nome: 'Ovo', categoria: 'proteina', icone: 'Egg' },
   { id: 'frango', nome: 'Frango', categoria: 'proteina', icone: 'Drumstick' },
   { id: 'carne', nome: 'Carne', categoria: 'proteina', icone: 'Beef' },
-  { id: 'porco', nome: 'Porco', categoria: 'proteina', icone: 'Ham' },
+  { id: 'porco', nome: 'Porco', categoria: 'proteina', icone: 'TbPig' },
+  { id: 'bacon', nome: 'Bacon', categoria: 'proteina', icone: 'Bacon' },
   { id: 'peixe', nome: 'Peixe', categoria: 'proteina', icone: 'Fish' },
 
   { id: 'alface', nome: 'Alface', categoria: 'salada-legumes', icone: 'Salad' },
-  { id: 'tomate', nome: 'Tomate', categoria: 'salada-legumes', icone: 'Cherry' },
+  { id: 'tomate', nome: 'Tomate', categoria: 'salada-legumes', icone: 'GiTomato' },
   { id: 'cenoura', nome: 'Cenoura', categoria: 'salada-legumes', icone: 'Carrot' },
   { id: 'brocolis', nome: 'Brócolis', categoria: 'salada-legumes', icone: 'Leaf' },
 
@@ -59,7 +60,8 @@ export const catalogoInicial: ItemCatalogo[] = [
   { id: 'achocolatado', nome: 'Achocolatado', categoria: 'bebida', icone: 'GlassWater' },
 
   { id: 'bolacha', nome: 'Bolacha', categoria: 'outros', icone: 'Cookie' },
+  { id: 'chocolate', nome: 'Chocolate', categoria: 'outros', icone: 'TbChocolate' },
   { id: 'sanduiche', nome: 'Sanduíche', categoria: 'outros', icone: 'Sandwich' },
   { id: 'pizza', nome: 'Pizza', categoria: 'outros', icone: 'Pizza' },
-  { id: 'rappi10', nome: 'Rappi10', categoria: 'outros', icone: 'Bike' },
+  { id: 'rappi10', nome: 'Rappi10', categoria: 'outros', icone: 'GiTacos' },
 ]
