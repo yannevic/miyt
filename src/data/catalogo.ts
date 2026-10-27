@@ -17,6 +17,7 @@ export type ItemCatalogo = {
   nome: string
   categoria: CategoriaId
   icone: string
+  pedeNome?: boolean
 }
 
 export const categorias: Categoria[] = [
@@ -60,8 +61,10 @@ export const catalogoInicial: ItemCatalogo[] = [
   { id: 'achocolatado', nome: 'Achocolatado', categoria: 'bebida', icone: 'GlassWater' },
 
   { id: 'bolacha', nome: 'Bolacha', categoria: 'outros', icone: 'Cookie' },
+  { id: 'bolo-torta', nome: 'Bolo/Torta', categoria: 'outros', icone: 'CakeSlice' },
   { id: 'chocolate', nome: 'Chocolate', categoria: 'outros', icone: 'TbChocolate' },
   { id: 'sanduiche', nome: 'Sanduíche', categoria: 'outros', icone: 'Sandwich' },
   { id: 'pizza', nome: 'Pizza', categoria: 'outros', icone: 'Pizza' },
   { id: 'rappi10', nome: 'Rappi10', categoria: 'outros', icone: 'GiTacos' },
+  { id: 'outro', nome: 'Outro', categoria: 'outros', icone: 'ChefHat', pedeNome: true },
 ]
