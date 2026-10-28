@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { ref, remove, set } from 'firebase/database'
+import { useEffect, useState } from 'react'
+import { onValue, ref, remove, set } from 'firebase/database'
 import { db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
@@ -8,12 +8,41 @@ import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
 import type { Planejamento, Refeicao } from './data/planejamento'
-import type { RefeicaoId, TipoRefeicao } from './data/refeicoes'
+import type { Modo, RefeicaoId, TipoRefeicao } from './data/refeicoes'
 
 type Edicao = {
   data: Date
   refeicao: TipoRefeicao
   editar: boolean
+}
+
+type DadosBrutos = Record<string, Record<string, Partial<Refeicao>>>
+
+// O Firebase não guarda listas vazias, então os campos podem faltar.
+// Aqui a gente completa o que falta pra ficar no formato do app.
+function normalizar(bruto: DadosBrutos | null): Planejamento {
+  const resultado: Planejamento = {}
+  if (!bruto) return resultado
+
+  for (const dia of Object.keys(bruto)) {
+    const refeicoesDoDia: Partial<Record<RefeicaoId, Refeicao>> = {}
+
+    for (const id of Object.keys(bruto[dia]) as RefeicaoId[]) {
+      const r = bruto[dia][id]
+      const modo: Modo = r.modo ?? 'juntos'
+      refeicoesDoDia[id] = {
+        modo,
+        juntos: r.juntos ?? [],
+        nana: r.nana ?? [],
+        miguel: r.miguel ?? [],
+        obs: r.obs ?? '',
+      }
+    }
+
+    resultado[dia] = refeicoesDoDia
+  }
+
+  return resultado
 }
 
 function App() {
@@ -23,6 +52,17 @@ function App() {
   const [editando, setEditando] = useState<Edicao | null>(null)
   const dias = diaDaSemana(dataBase)
 
+  useEffect(() => {
+    const parar = onValue(
+      ref(db, 'dias'),
+      (snapshot) => {
+        setPlanejamento(normalizar(snapshot.val()))
+      },
+      (erro) => console.error('Erro ao ler do Firebase:', erro),
+    )
+    return parar
+  }, [])
+
   function mudarSemana(quantidade: number) {
     const nova = new Date(dataBase)
     nova.setDate(nova.getDate() + quantidade * 7)
@@ -30,9 +70,8 @@ function App() {
   }
 
   function guardarRefeicao(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
-    const dia = chaveDia(data)
+    const endereco = ref(db, `dias/${chaveDia(data)}/${id}`)
 
-    const endereco = ref(db, `dias/${dia}/${id}`)
     if (refeicao) {
       // JSON.parse(JSON.stringify(...)) tira os campos undefined, que o Firebase não aceita
       set(endereco, JSON.parse(JSON.stringify(refeicao))).catch((erro) =>
@@ -44,15 +83,7 @@ function App() {
       )
     }
 
-    setPlanejamento((atual) => {
-      const doDia = { ...atual[dia] }
-      if (refeicao) {
-        doDia[id] = refeicao
-      } else {
-        delete doDia[id]
-      }
-      return { ...atual, [dia]: doDia }
-    })
+    // Não atualiza o planejamento aqui: o onValue acima recebe a mudança sozinho.
     setEditando(null)
   }
 
