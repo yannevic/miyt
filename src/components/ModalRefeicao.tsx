@@ -2,16 +2,26 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { categorias, catalogoInicial, type CategoriaId } from '../data/catalogo'
 import { icones } from '../data/icones'
-import type { ItemEscolhido, Pessoa, Refeicao } from '../data/planejamento'
-import type { Modo, TipoRefeicao } from '../data/refeicoes'
-import { formatarDataCompleta, nomesDias } from '../utils/datas'
+import { iconesRefeicao } from '../data/iconesRefeicao'
+import type { ItemEscolhido, Pessoa, Planejamento, Refeicao } from '../data/planejamento'
+import { refeicoes, type Modo, type RefeicaoId, type TipoRefeicao } from '../data/refeicoes'
+import { chaveDia, formatarDataCompleta, nomesDias } from '../utils/datas'
 import { ordenarEscolhidos } from '../utils/ordenar'
+import { formatarDiaMes } from '../utils/semana'
 
 type ModalRefeicaoProps = {
   data: Date
+  dias: Date[]
+  planejamento: Planejamento
   refeicao: TipoRefeicao
   inicial?: Refeicao
   onSalvar: (refeicao: Refeicao) => void
+  onLevar: (
+    destino: Date,
+    idDestino: RefeicaoId,
+    refeicao: Refeicao,
+    mover: boolean,
+  ) => void
   onApagar: () => void
   onFechar: () => void
 }
@@ -42,9 +52,12 @@ function limparDetalhes(lista: ItemEscolhido[]): ItemEscolhido[] {
 
 export function ModalRefeicao({
   data,
+  dias,
+  planejamento,
   refeicao,
   inicial,
   onSalvar,
+  onLevar,
   onApagar,
   onFechar,
 }: ModalRefeicaoProps) {
@@ -57,6 +70,8 @@ export function ModalRefeicao({
   const [obs, setObs] = useState(inicial?.obs ?? '')
   const [pessoa, setPessoa] = useState<'nana' | 'miguel'>('nana')
   const [categoriaId, setCategoriaId] = useState<CategoriaId>('base')
+  const [destinoDia, setDestinoDia] = useState(chaveDia(data))
+  const [destinoRefeicao, setDestinoRefeicao] = useState<RefeicaoId>(refeicao.id)
 
   const listaAtual: Pessoa = modo === 'juntos' ? 'juntos' : pessoa
   const escolhidos = listas[listaAtual]
@@ -64,6 +79,8 @@ export function ModalRefeicao({
   // Só as listas do modo ativo contam (a aba que você está quando salva)
   const pessoasAtivas: Pessoa[] = modo === 'juntos' ? ['juntos'] : ['nana', 'miguel']
   const pendente = pessoasAtivas.find((p) => listas[p].some(precisaNome))
+
+  const mesmoLugar = destinoDia === chaveDia(data) && destinoRefeicao === refeicao.id
 
   function trocarLista(novaLista: ItemEscolhido[]) {
     setListas({ ...listas, [listaAtual]: novaLista })
@@ -85,16 +102,33 @@ export function ModalRefeicao({
     trocarLista(escolhidos.filter((_, i) => i !== posicao))
   }
 
-  function salvar() {
-    if (pendente) return
-    // Salva só o modo ativo; as listas do outro modo são esvaziadas
-    onSalvar({
+  // Monta a refeição só com o modo ativo; as listas do outro modo vão vazias
+  function montarRefeicao(): Refeicao {
+    return {
       modo,
       juntos: modo === 'juntos' ? limparDetalhes(listas.juntos) : [],
       nana: modo === 'separado' ? limparDetalhes(listas.nana) : [],
       miguel: modo === 'separado' ? limparDetalhes(listas.miguel) : [],
       obs: obs.trim(),
-    })
+    }
+  }
+
+  function salvar() {
+    if (pendente) return
+    onSalvar(montarRefeicao())
+  }
+
+  function levar(mover: boolean) {
+    if (pendente || mesmoLugar) return
+    const dataDestino = dias.find((d) => chaveDia(d) === destinoDia)
+    if (!dataDestino) return
+
+    const jaExiste = Boolean(planejamento[destinoDia]?.[destinoRefeicao])
+    if (jaExiste && !window.confirm('Já existe uma refeição nesse horário. Substituir?')) {
+      return
+    }
+
+    onLevar(dataDestino, destinoRefeicao, montarRefeicao(), mover)
   }
 
   const botaoModo = (valor: Modo) =>
@@ -245,6 +279,75 @@ export function ModalRefeicao({
             className='rounded-lg bg-white px-3 py-1 font-normal outline-none ring-1 ring-leaf-400 focus:ring-2'
           />
         </label>
+
+        <section className='flex flex-col gap-2 rounded-xl bg-white/60 p-3'>
+          <h3 className='font-bold'>Copiar ou mover pra outro horário</h3>
+
+          <div className='flex flex-wrap gap-2'>
+            {dias.map((d) => {
+              const chave = chaveDia(d)
+              return (
+                <button
+                  key={chave}
+                  type='button'
+                  onClick={() => setDestinoDia(chave)}
+                  className={
+                    chave === destinoDia
+                      ? 'rounded-xl bg-leaf-600 px-3 py-1 text-sm font-semibold text-white'
+                      : 'rounded-xl bg-white/70 px-3 py-1 text-sm font-semibold text-leaf-800'
+                  }
+                >
+                  {nomesDias[d.getDay()]} {formatarDiaMes(d)}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className='flex flex-wrap gap-2'>
+            {refeicoes.map((r) => {
+              const IconeRefeicao = iconesRefeicao[r.id]
+              return (
+                <button
+                  key={r.id}
+                  type='button'
+                  onClick={() => setDestinoRefeicao(r.id)}
+                  className={
+                    r.id === destinoRefeicao
+                      ? 'flex items-center gap-2 rounded-xl bg-leaf-600 px-3 py-1 text-sm font-semibold text-white'
+                      : 'flex items-center gap-2 rounded-xl bg-white/70 px-3 py-1 text-sm font-semibold text-leaf-800'
+                  }
+                >
+                  <IconeRefeicao size={16} />
+                  {r.nome}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className='flex flex-wrap items-center gap-2'>
+            <button
+              type='button'
+              onClick={() => levar(false)}
+              disabled={mesmoLugar || Boolean(pendente)}
+              className='rounded-xl bg-white/70 px-4 py-1 font-semibold disabled:opacity-50'
+            >
+              Copiar
+            </button>
+            <button
+              type='button'
+              onClick={() => levar(true)}
+              disabled={mesmoLugar || Boolean(pendente)}
+              className='rounded-xl bg-petal-200 px-4 py-1 font-semibold disabled:opacity-50'
+            >
+              Mover
+            </button>
+            {mesmoLugar && (
+              <span className='text-sm text-leaf-600'>
+                Escolha outro dia ou outra refeição.
+              </span>
+            )}
+          </div>
+        </section>
 
         {pendente && (
           <p className='text-sm font-semibold text-petal-600'>

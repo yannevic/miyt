@@ -45,6 +45,22 @@ function normalizar(bruto: DadosBrutos | null): Planejamento {
   return resultado
 }
 
+// Grava (ou apaga, se refeicao for null) uma refeição no Firebase
+function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
+  const endereco = ref(db, `dias/${chaveDia(data)}/${id}`)
+
+  if (refeicao) {
+    // JSON.parse(JSON.stringify(...)) tira os campos undefined, que o Firebase não aceita
+    set(endereco, JSON.parse(JSON.stringify(refeicao))).catch((erro) =>
+      console.error('Erro ao salvar no Firebase:', erro),
+    )
+  } else {
+    remove(endereco).catch((erro) =>
+      console.error('Erro ao apagar no Firebase:', erro),
+    )
+  }
+}
+
 function App() {
   const [tela, setTela] = useState<'semana' | 'catalogo'>('semana')
   const [dataBase, setDataBase] = useState(new Date())
@@ -70,20 +86,22 @@ function App() {
   }
 
   function guardarRefeicao(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
-    const endereco = ref(db, `dias/${chaveDia(data)}/${id}`)
-
-    if (refeicao) {
-      // JSON.parse(JSON.stringify(...)) tira os campos undefined, que o Firebase não aceita
-      set(endereco, JSON.parse(JSON.stringify(refeicao))).catch((erro) =>
-        console.error('Erro ao salvar no Firebase:', erro),
-      )
-    } else {
-      remove(endereco).catch((erro) =>
-        console.error('Erro ao apagar no Firebase:', erro),
-      )
-    }
-
+    gravar(data, id, refeicao)
     // Não atualiza o planejamento aqui: o onValue acima recebe a mudança sozinho.
+    setEditando(null)
+  }
+
+  // Copia (mover = false) ou move (mover = true) a refeição que está no modal
+  function levarRefeicao(
+    destino: Date,
+    idDestino: RefeicaoId,
+    refeicao: Refeicao,
+    mover: boolean,
+  ) {
+    gravar(destino, idDestino, refeicao)
+    if (mover && editando) {
+      gravar(editando.data, editando.refeicao.id, null)
+    }
     setEditando(null)
   }
 
@@ -171,11 +189,14 @@ function App() {
         <ModalRefeicao
           key={chaveDia(editando.data) + editando.refeicao.id}
           data={editando.data}
+          dias={dias}
+          planejamento={planejamento}
           refeicao={editando.refeicao}
           inicial={refeicaoAberta}
           onSalvar={(refeicao) =>
             guardarRefeicao(editando.data, editando.refeicao.id, refeicao)
           }
+          onLevar={levarRefeicao}
           onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
           onFechar={() => setEditando(null)}
         />
