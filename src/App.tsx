@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ref, remove, set } from 'firebase/database'
+import { db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
 import { GradeSemana } from './components/GradeSemana'
@@ -29,6 +31,19 @@ function App() {
 
   function guardarRefeicao(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
     const dia = chaveDia(data)
+
+    const endereco = ref(db, `dias/${dia}/${id}`)
+    if (refeicao) {
+      // JSON.parse(JSON.stringify(...)) tira os campos undefined, que o Firebase não aceita
+      set(endereco, JSON.parse(JSON.stringify(refeicao))).catch((erro) =>
+        console.error('Erro ao salvar no Firebase:', erro),
+      )
+    } else {
+      remove(endereco).catch((erro) =>
+        console.error('Erro ao apagar no Firebase:', erro),
+      )
+    }
+
     setPlanejamento((atual) => {
       const doDia = { ...atual[dia] }
       if (refeicao) {
