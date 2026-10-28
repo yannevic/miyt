@@ -7,6 +7,9 @@ import { GradeSemana } from './components/GradeSemana'
 import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
+import { catalogoInicial, type CategoriaId, type ItemCatalogo } from './data/catalogo'
+import { CatalogoContexto } from './data/catalogoContexto'
+import { icones } from './data/icones'
 import type { Planejamento, Refeicao } from './data/planejamento'
 import type { Modo, RefeicaoId, TipoRefeicao } from './data/refeicoes'
 
@@ -45,6 +48,47 @@ function normalizar(bruto: DadosBrutos | null): Planejamento {
   return resultado
 }
 
+// O Firebase devolve uma lista como array (ou como objeto com chaves 0, 1, 2...).
+// Aqui a gente aceita os dois jeitos e descarta item quebrado ou com ícone que não existe.
+function normalizarCatalogo(bruto: unknown): ItemCatalogo[] {
+  if (!bruto) return []
+  const lista: unknown[] = Array.isArray(bruto)
+    ? bruto
+    : Object.values(bruto as Record<string, unknown>)
+
+  return lista.filter((x): x is ItemCatalogo => {
+    if (typeof x !== 'object' || x === null) return false
+    const o = x as Record<string, unknown>
+    return (
+      typeof o.id === 'string' &&
+      typeof o.nome === 'string' &&
+      typeof o.categoria === 'string' &&
+      typeof o.icone === 'string' &&
+      o.icone in icones
+    )
+  })
+}
+
+// Cria o id do item novo a partir do nome (ex.: 'Strogonoff' vira 'strogonoff')
+function criarId(nome: string, existentes: ItemCatalogo[]): string {
+  const base =
+    nome
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'item'
+
+  let id = base
+  let n = 2
+  while (existentes.some((item) => item.id === id)) {
+    id = `${base}-${n}`
+    n++
+  }
+  return id
+}
+
 // Grava (ou apaga, se refeicao for null) uma refeição no Firebase
 function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
   const endereco = ref(db, `dias/${chaveDia(data)}/${id}`)
@@ -65,6 +109,7 @@ function App() {
   const [tela, setTela] = useState<'semana' | 'catalogo'>('semana')
   const [dataBase, setDataBase] = useState(new Date())
   const [planejamento, setPlanejamento] = useState<Planejamento>({})
+  const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(catalogoInicial)
   const [editando, setEditando] = useState<Edicao | null>(null)
   const dias = diaDaSemana(dataBase)
 
@@ -75,6 +120,28 @@ function App() {
         setPlanejamento(normalizar(snapshot.val()))
       },
       (erro) => console.error('Erro ao ler do Firebase:', erro),
+    )
+    return parar
+  }, [])
+
+  useEffect(() => {
+    const parar = onValue(
+      ref(db, 'catalogo'),
+      (snapshot) => {
+        const valor = snapshot.val()
+
+        // Banco ainda sem catálogo: grava o catálogo inicial lá (só acontece na primeira vez)
+        if (valor === null) {
+          set(ref(db, 'catalogo'), JSON.parse(JSON.stringify(catalogoInicial))).catch(
+            (erro) => console.error('Erro ao criar o catálogo no Firebase:', erro),
+          )
+          return
+        }
+
+        const lista = normalizarCatalogo(valor)
+        if (lista.length > 0) setCatalogo(lista)
+      },
+      (erro) => console.error('Erro ao ler o catálogo do Firebase:', erro),
     )
     return parar
   }, [])
@@ -105,6 +172,25 @@ function App() {
     setEditando(null)
   }
 
+  // Cadastra um item novo, sempre ANTES do 'Outro' da categoria
+  function cadastrarItem(nome: string, categoria: CategoriaId, icone: string) {
+    const novo: ItemCatalogo = { id: criarId(nome, catalogo), nome, categoria, icone }
+    const lista = [...catalogo]
+    const posicaoDoOutro = lista.findIndex(
+      (item) => item.categoria === categoria && item.pedeNome,
+    )
+
+    if (posicaoDoOutro === -1) {
+      lista.push(novo)
+    } else {
+      lista.splice(posicaoDoOutro, 0, novo)
+    }
+
+    set(ref(db, 'catalogo'), JSON.parse(JSON.stringify(lista))).catch((erro) =>
+      console.error('Erro ao salvar o catálogo no Firebase:', erro),
+    )
+  }
+
   const refeicaoAberta = editando
     ? planejamento[chaveDia(editando.data)]?.[editando.refeicao.id]
     : undefined
@@ -117,91 +203,99 @@ function App() {
   const abaInativa = 'rounded-xl bg-white/60 px-3 py-1 font-semibold text-leaf-800'
 
   return (
-    <div className='bg-bark-100 min-h-screen'>
-      <div className='flex items-center justify-between p-4'>
-        <div className='flex items-center gap-4'>
-          <h1 className='text-leaf-800 text-4xl font-bold'>Miyt</h1>
-          <button
-            onClick={() => setTela('semana')}
-            className={tela === 'semana' ? abaAtiva : abaInativa}
-          >
-            Semana
-          </button>
-          <button
-            onClick={() => setTela('catalogo')}
-            className={tela === 'catalogo' ? abaAtiva : abaInativa}
-          >
-            Catálogo
-          </button>
-        </div>
-
-        {tela === 'semana' && (
-          <div className='flex items-center gap-2 text-leaf-800'>
+    <CatalogoContexto.Provider
+      value={{
+        itens: catalogo,
+        achar: (id) => catalogo.find((item) => item.id === id),
+        cadastrar: cadastrarItem,
+      }}
+    >
+      <div className='bg-bark-100 min-h-screen'>
+        <div className='flex items-center justify-between p-4'>
+          <div className='flex items-center gap-4'>
+            <h1 className='text-leaf-800 text-4xl font-bold'>Miyt</h1>
             <button
-              onClick={() => mudarSemana(-1)}
-              className='rounded-xl bg-white/60 px-3 py-1 font-bold'
+              onClick={() => setTela('semana')}
+              className={tela === 'semana' ? abaAtiva : abaInativa}
             >
-              ‹
-            </button>
-            <span className='min-w-48 text-center font-semibold'>
-              {inicio} a {fim}/{ano}
-            </span>
-            <button
-              onClick={() => mudarSemana(1)}
-              className='rounded-xl bg-white/60 px-3 py-1 font-bold'
-            >
-              ›
+              Semana
             </button>
             <button
-              onClick={() => setDataBase(new Date())}
-              className='rounded-xl bg-petal-200 px-3 py-1 font-semibold'
+              onClick={() => setTela('catalogo')}
+              className={tela === 'catalogo' ? abaAtiva : abaInativa}
             >
-              Hoje
+              Catálogo
             </button>
           </div>
+
+          {tela === 'semana' && (
+            <div className='flex items-center gap-2 text-leaf-800'>
+              <button
+                onClick={() => mudarSemana(-1)}
+                className='rounded-xl bg-white/60 px-3 py-1 font-bold'
+              >
+                ‹
+              </button>
+              <span className='min-w-48 text-center font-semibold'>
+                {inicio} a {fim}/{ano}
+              </span>
+              <button
+                onClick={() => mudarSemana(1)}
+                className='rounded-xl bg-white/60 px-3 py-1 font-bold'
+              >
+                ›
+              </button>
+              <button
+                onClick={() => setDataBase(new Date())}
+                className='rounded-xl bg-petal-200 px-3 py-1 font-semibold'
+              >
+                Hoje
+              </button>
+            </div>
+          )}
+        </div>
+
+        {tela === 'semana' ? (
+          <GradeSemana
+            dias={dias}
+            planejamento={planejamento}
+            onAbrir={(data, refeicao) => {
+              const existe = Boolean(planejamento[chaveDia(data)]?.[refeicao.id])
+              setEditando({ data, refeicao, editar: !existe })
+            }}
+          />
+        ) : (
+          <Catalogo />
+        )}
+
+        {editando && refeicaoAberta && !editando.editar && (
+          <CardapioRefeicao
+            data={editando.data}
+            refeicao={editando.refeicao}
+            dados={refeicaoAberta}
+            onEditar={() => setEditando({ ...editando, editar: true })}
+            onFechar={() => setEditando(null)}
+          />
+        )}
+
+        {editando && (editando.editar || !refeicaoAberta) && (
+          <ModalRefeicao
+            key={chaveDia(editando.data) + editando.refeicao.id}
+            data={editando.data}
+            dias={dias}
+            planejamento={planejamento}
+            refeicao={editando.refeicao}
+            inicial={refeicaoAberta}
+            onSalvar={(refeicao) =>
+              guardarRefeicao(editando.data, editando.refeicao.id, refeicao)
+            }
+            onLevar={levarRefeicao}
+            onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
+            onFechar={() => setEditando(null)}
+          />
         )}
       </div>
-
-      {tela === 'semana' ? (
-        <GradeSemana
-          dias={dias}
-          planejamento={planejamento}
-          onAbrir={(data, refeicao) => {
-            const existe = Boolean(planejamento[chaveDia(data)]?.[refeicao.id])
-            setEditando({ data, refeicao, editar: !existe })
-          }}
-        />
-      ) : (
-        <Catalogo />
-      )}
-
-      {editando && refeicaoAberta && !editando.editar && (
-        <CardapioRefeicao
-          data={editando.data}
-          refeicao={editando.refeicao}
-          dados={refeicaoAberta}
-          onEditar={() => setEditando({ ...editando, editar: true })}
-          onFechar={() => setEditando(null)}
-        />
-      )}
-
-      {editando && (editando.editar || !refeicaoAberta) && (
-        <ModalRefeicao
-          key={chaveDia(editando.data) + editando.refeicao.id}
-          data={editando.data}
-          dias={dias}
-          planejamento={planejamento}
-          refeicao={editando.refeicao}
-          inicial={refeicaoAberta}
-          onSalvar={(refeicao) =>
-            guardarRefeicao(editando.data, editando.refeicao.id, refeicao)
-          }
-          onLevar={levarRefeicao}
-          onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
-          onFechar={() => setEditando(null)}
-        />
-      )}
-    </div>
+    </CatalogoContexto.Provider>
   )
 }
 

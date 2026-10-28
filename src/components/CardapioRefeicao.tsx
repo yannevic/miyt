@@ -1,5 +1,6 @@
 import { Pencil, Utensils, X } from 'lucide-react'
-import { categorias, catalogoInicial } from '../data/catalogo'
+import { categorias } from '../data/catalogo'
+import { useCatalogo } from '../data/catalogoContexto'
 import { icones } from '../data/icones'
 import type { ItemEscolhido, Refeicao } from '../data/planejamento'
 import type { TipoRefeicao } from '../data/refeicoes'
@@ -15,7 +16,8 @@ type CardapioRefeicaoProps = {
 }
 
 function ListaPorCategoria({ itens }: { itens: ItemEscolhido[] }) {
-  const ordenados = ordenarEscolhidos(itens)
+  const { itens: catalogo, achar } = useCatalogo()
+  const ordenados = ordenarEscolhidos(itens, catalogo)
 
   if (ordenados.length === 0) {
     return <p className='text-center text-sm italic text-leaf-600'>Nada planejado</p>
@@ -25,7 +27,7 @@ function ListaPorCategoria({ itens }: { itens: ItemEscolhido[] }) {
     <div className='flex flex-col gap-3'>
       {categorias.map((categoria) => {
         const daCategoria = ordenados.filter((escolhido) => {
-          const item = catalogoInicial.find((c) => c.id === escolhido.item)
+          const item = achar(escolhido.item)
           return item?.categoria === categoria.id
         })
         if (daCategoria.length === 0) return null
@@ -41,7 +43,7 @@ function ListaPorCategoria({ itens }: { itens: ItemEscolhido[] }) {
             </p>
             <div className='flex flex-col gap-1'>
               {daCategoria.map((escolhido, i) => {
-                const item = catalogoInicial.find((c) => c.id === escolhido.item)
+                const item = achar(escolhido.item)
                 if (!item) return null
                 const Icone = icones[item.icone]
                 const principal = item.pedeNome ? escolhido.detalhe ?? item.nome : item.nome

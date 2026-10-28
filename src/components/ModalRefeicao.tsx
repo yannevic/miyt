@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import { categorias, catalogoInicial, type CategoriaId } from '../data/catalogo'
+import { categorias, type CategoriaId, type ItemCatalogo } from '../data/catalogo'
+import { useCatalogo } from '../data/catalogoContexto'
 import { icones } from '../data/icones'
 import { iconesRefeicao } from '../data/iconesRefeicao'
 import type { ItemEscolhido, Pessoa, Planejamento, Refeicao } from '../data/planejamento'
@@ -34,12 +35,11 @@ const nomesPessoas: Record<Pessoa, string> = {
   miguel: 'Miguel',
 }
 
-function procurarItem(id: string) {
-  return catalogoInicial.find((item) => item.id === id)
-}
-
-function precisaNome(escolhido: ItemEscolhido): boolean {
-  const item = procurarItem(escolhido.item)
+function precisaNome(
+  escolhido: ItemEscolhido,
+  achar: (id: string) => ItemCatalogo | undefined,
+): boolean {
+  const item = achar(escolhido.item)
   return Boolean(item?.pedeNome) && !(escolhido.detalhe ?? '').trim()
 }
 
@@ -61,6 +61,7 @@ export function ModalRefeicao({
   onApagar,
   onFechar,
 }: ModalRefeicaoProps) {
+  const { itens: catalogo, achar } = useCatalogo()
   const [modo, setModo] = useState<Modo>(inicial?.modo ?? refeicao.modoPadrao)
   const [listas, setListas] = useState<Listas>({
     juntos: inicial?.juntos ?? [],
@@ -78,7 +79,9 @@ export function ModalRefeicao({
 
   // Só as listas do modo ativo contam (a aba que você está quando salva)
   const pessoasAtivas: Pessoa[] = modo === 'juntos' ? ['juntos'] : ['nana', 'miguel']
-  const pendente = pessoasAtivas.find((p) => listas[p].some(precisaNome))
+  const pendente = pessoasAtivas.find((p) =>
+    listas[p].some((escolhido) => precisaNome(escolhido, achar)),
+  )
 
   const mesmoLugar = destinoDia === chaveDia(data) && destinoRefeicao === refeicao.id
 
@@ -87,7 +90,7 @@ export function ModalRefeicao({
   }
 
   function adicionar(itemId: string) {
-    trocarLista(ordenarEscolhidos([...escolhidos, { item: itemId }]))
+    trocarLista(ordenarEscolhidos([...escolhidos, { item: itemId }], catalogo))
   }
 
   function mudarDetalhe(posicao: number, texto: string) {
@@ -145,9 +148,7 @@ export function ModalRefeicao({
       : 'rounded-xl bg-lilac-200 px-4 py-1 font-semibold text-leaf-800 ring-2 ring-lilac-600'
   }
 
-  const itensDaCategoria = catalogoInicial.filter(
-    (item) => item.categoria === categoriaId,
-  )
+  const itensDaCategoria = catalogo.filter((item) => item.categoria === categoriaId)
 
   return (
     <div className='fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-soil-900/40 p-4'>
@@ -195,7 +196,7 @@ export function ModalRefeicao({
             <p className='text-sm text-leaf-600'>Nenhum item ainda. Escolha nas categorias abaixo.</p>
           )}
           {escolhidos.map((escolhido, i) => {
-            const item = procurarItem(escolhido.item)
+            const item = achar(escolhido.item)
             if (!item) return null
             const categoria = categorias.find((c) => c.id === item.categoria)
             const Icone = icones[item.icone]
@@ -263,7 +264,9 @@ export function ModalRefeicao({
                   style={{ backgroundColor: categoria?.cor }}
                 >
                   <Icone size={26} />
-                  <span className='text-sm font-semibold'>{item.nome}</span>
+                  <span className='break-words text-center text-sm font-semibold'>
+                    {item.nome}
+                  </span>
                 </button>
               )
             })}
