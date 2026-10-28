@@ -18,8 +18,6 @@ type ModalRefeicaoProps = {
 
 type Listas = Record<Pessoa, ItemEscolhido[]>
 
-const pessoas: Pessoa[] = ['juntos', 'nana', 'miguel']
-
 const nomesPessoas: Record<Pessoa, string> = {
   juntos: 'Juntos',
   nana: 'Nana',
@@ -62,7 +60,10 @@ export function ModalRefeicao({
 
   const listaAtual: Pessoa = modo === 'juntos' ? 'juntos' : pessoa
   const escolhidos = listas[listaAtual]
-  const pendente = pessoas.find((p) => listas[p].some(precisaNome))
+
+  // Só as listas do modo ativo contam (a aba que você está quando salva)
+  const pessoasAtivas: Pessoa[] = modo === 'juntos' ? ['juntos'] : ['nana', 'miguel']
+  const pendente = pessoasAtivas.find((p) => listas[p].some(precisaNome))
 
   function trocarLista(novaLista: ItemEscolhido[]) {
     setListas({ ...listas, [listaAtual]: novaLista })
@@ -86,11 +87,12 @@ export function ModalRefeicao({
 
   function salvar() {
     if (pendente) return
+    // Salva só o modo ativo; as listas do outro modo são esvaziadas
     onSalvar({
       modo,
-      juntos: limparDetalhes(listas.juntos),
-      nana: limparDetalhes(listas.nana),
-      miguel: limparDetalhes(listas.miguel),
+      juntos: modo === 'juntos' ? limparDetalhes(listas.juntos) : [],
+      nana: modo === 'separado' ? limparDetalhes(listas.nana) : [],
+      miguel: modo === 'separado' ? limparDetalhes(listas.miguel) : [],
       obs: obs.trim(),
     })
   }
