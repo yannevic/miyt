@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Copy, LogOut } from 'lucide-react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { onValue, ref, remove, set, update } from 'firebase/database'
+import { onValue, push, ref, remove, set, update } from 'firebase/database'
 import { auth, db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
@@ -16,8 +16,15 @@ import { Login } from './components/Login'
 import { catalogoInicial, type CategoriaId, type ItemCatalogo } from './data/catalogo'
 import { CatalogoContexto } from './data/catalogoContexto'
 import { icones } from './data/icones'
-import type { Planejamento, Refeicao, Registro } from './data/planejamento'
-import type { RefeicaoId, TipoRefeicao } from './data/refeicoes'
+import type {
+  ItemEscolhido,
+  Modelo,
+  ModeloDados,
+  Planejamento,
+  Refeicao,
+  Registro,
+} from './data/planejamento'
+import type { Modo, RefeicaoId, TipoRefeicao } from './data/refeicoes'
 
 type Edicao = {
   data: Date
@@ -97,6 +104,56 @@ function normalizarCatalogo(bruto: unknown): ItemCatalogo[] {
   })
 }
 
+// Uma lista de itens escolhidos de um modelo (pode ter vindo vazia, ou seja, faltando)
+function normalizarItens(bruto: unknown): ItemEscolhido[] {
+  if (!bruto) return []
+  const lista: unknown[] = Array.isArray(bruto)
+    ? bruto
+    : Object.values(bruto as Record<string, unknown>)
+
+  const resultado: ItemEscolhido[] = []
+  for (const x of lista) {
+    if (typeof x !== 'object' || x === null) continue
+    const o = x as Record<string, unknown>
+    if (typeof o.item !== 'string') continue
+    resultado.push(
+      typeof o.detalhe === 'string' && o.detalhe
+        ? { item: o.item, detalhe: o.detalhe }
+        : { item: o.item },
+    )
+  }
+  return resultado
+}
+
+// Os modelos chegam do Firebase como um objeto { idDoModelo: {...}, ... }.
+// Aqui viram uma lista, completando o que falta e ordenada pelo nome.
+function normalizarModelos(bruto: unknown): Modelo[] {
+  if (!bruto || typeof bruto !== 'object') return []
+
+  const resultado: Modelo[] = []
+  for (const [id, valor] of Object.entries(bruto as Record<string, unknown>)) {
+    if (typeof valor !== 'object' || valor === null) continue
+    const o = valor as Record<string, unknown>
+    if (typeof o.nome !== 'string') continue
+
+    const modo: Modo | null =
+      o.modo === 'juntos' || o.modo === 'separado' ? o.modo : null
+    if (!modo) continue
+
+    resultado.push({
+      id,
+      nome: o.nome,
+      modo,
+      juntos: normalizarItens(o.juntos),
+      nana: normalizarItens(o.nana),
+      miguel: normalizarItens(o.miguel),
+      obs: typeof o.obs === 'string' ? o.obs : '',
+    })
+  }
+
+  return resultado.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+}
+
 // Cria o id do item novo a partir do nome (ex.: 'Strogonoff' vira 'strogonoff')
 function criarId(nome: string, existentes: ItemCatalogo[]): string {
   const base =
@@ -148,12 +205,29 @@ function registrar(data: Date, id: RefeicaoId, registro: Registro | undefined) {
   }
 }
 
+// Grava um modelo. Com id = troca o modelo que já existe; com null = cria um novo.
+// push(ref) pede ao Firebase um endereço novo e único (um id que ninguém mais tem).
+function gravarModelo(id: string | null, dados: ModeloDados) {
+  const endereco = id ? ref(db, `modelos/${id}`) : push(ref(db, 'modelos'))
+
+  set(endereco, JSON.parse(JSON.stringify(dados))).catch((erro) =>
+    console.error('Erro ao salvar o modelo no Firebase:', erro),
+  )
+}
+
+function apagarModelo(id: string) {
+  remove(ref(db, `modelos/${id}`)).catch((erro) =>
+    console.error('Erro ao apagar o modelo no Firebase:', erro),
+  )
+}
+
 // O app de verdade: só aparece depois que alguém entrou
 function Principal({ email, onSair }: PrincipalProps) {
   const [tela, setTela] = useState<Tela>('semana')
   const [dataBase, setDataBase] = useState(new Date())
   const [planejamento, setPlanejamento] = useState<Planejamento>({})
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(catalogoInicial)
+  const [modelos, setModelos] = useState<Modelo[]>([])
   const [editando, setEditando] = useState<Edicao | null>(null)
   const [copiando, setCopiando] = useState<Copia | null>(null)
   const dias = diaDaSemana(dataBase)
@@ -187,6 +261,17 @@ function Principal({ email, onSair }: PrincipalProps) {
         if (lista.length > 0) setCatalogo(lista)
       },
       (erro) => console.error('Erro ao ler o catálogo do Firebase:', erro),
+    )
+    return parar
+  }, [])
+
+  useEffect(() => {
+    const parar = onValue(
+      ref(db, 'modelos'),
+      (snapshot) => {
+        setModelos(normalizarModelos(snapshot.val()))
+      },
+      (erro) => console.error('Erro ao ler os modelos do Firebase:', erro),
     )
     return parar
   }, [])
@@ -458,11 +543,14 @@ function Principal({ email, onSair }: PrincipalProps) {
             planejamento={planejamento}
             refeicao={editando.refeicao}
             inicial={refeicaoAberta}
+            modelos={modelos}
             onSalvar={(refeicao) =>
               guardarRefeicao(editando.data, editando.refeicao.id, refeicao)
             }
             onLevar={levarRefeicao}
             onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
+            onSalvarModelo={gravarModelo}
+            onApagarModelo={apagarModelo}
             onFechar={() => setEditando(null)}
           />
         )}

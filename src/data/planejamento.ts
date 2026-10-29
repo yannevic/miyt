@@ -26,3 +26,16 @@ export type Refeicao = {
 }
 
 export type Planejamento = Record<string, Partial<Record<RefeicaoId, Refeicao>>>
+
+// Modelo de refeição (favorita): o que é gravado no Firebase em modelos/{id}
+export type ModeloDados = {
+  nome: string
+  modo: Modo
+  juntos: ItemEscolhido[]
+  nana: ItemEscolhido[]
+  miguel: ItemEscolhido[]
+  obs: string
+}
+
+// O modelo como o app usa: os mesmos dados + o id que o Firebase criou
+export type Modelo = ModeloDados & { id: string }

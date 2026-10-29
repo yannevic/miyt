@@ -1,10 +1,17 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { Bookmark, X } from 'lucide-react'
 import { categorias, type CategoriaId, type ItemCatalogo } from '../data/catalogo'
 import { useCatalogo } from '../data/catalogoContexto'
 import { icones } from '../data/icones'
 import { iconesRefeicao } from '../data/iconesRefeicao'
-import type { ItemEscolhido, Pessoa, Planejamento, Refeicao } from '../data/planejamento'
+import type {
+  ItemEscolhido,
+  Modelo,
+  ModeloDados,
+  Pessoa,
+  Planejamento,
+  Refeicao,
+} from '../data/planejamento'
 import { refeicoes, type Modo, type RefeicaoId, type TipoRefeicao } from '../data/refeicoes'
 import { chaveDia, formatarDataCompleta, nomesDias } from '../utils/datas'
 import { ordenarEscolhidos } from '../utils/ordenar'
@@ -17,6 +24,7 @@ type ModalRefeicaoProps = {
   planejamento: Planejamento
   refeicao: TipoRefeicao
   inicial?: Refeicao
+  modelos: Modelo[]
   onSalvar: (refeicao: Refeicao) => void
   onLevar: (
     destino: Date,
@@ -25,6 +33,8 @@ type ModalRefeicaoProps = {
     mover: boolean,
   ) => void
   onApagar: () => void
+  onSalvarModelo: (id: string | null, dados: ModeloDados) => void
+  onApagarModelo: (id: string) => void
   onFechar: () => void
 }
 
@@ -35,6 +45,9 @@ type Pedido =
   | { tipo: 'apagar' }
   | { tipo: 'descartar' }
   | { tipo: 'substituir'; mover: boolean }
+  | { tipo: 'usarModelo'; modelo: Modelo }
+  | { tipo: 'apagarModelo'; modelo: Modelo }
+  | { tipo: 'substituirModelo'; id: string; nome: string }
 
 const nomesPessoas: Record<Pessoa, string> = {
   juntos: 'Juntos',
@@ -63,9 +76,12 @@ export function ModalRefeicao({
   planejamento,
   refeicao,
   inicial,
+  modelos,
   onSalvar,
   onLevar,
   onApagar,
+  onSalvarModelo,
+  onApagarModelo,
   onFechar,
 }: ModalRefeicaoProps) {
   const { itens: catalogo, achar } = useCatalogo()
@@ -81,6 +97,8 @@ export function ModalRefeicao({
   const [destinoDia, setDestinoDia] = useState(chaveDia(data))
   const [destinoRefeicao, setDestinoRefeicao] = useState<RefeicaoId>(refeicao.id)
   const [pedido, setPedido] = useState<Pedido | null>(null)
+  const [nomeModelo, setNomeModelo] = useState('')
+  const [aviso, setAviso] = useState<string | null>(null)
 
   // Guarda como o modal estava ao abrir, pra saber se você mudou alguma coisa
   const [chaveInicial] = useState(() => JSON.stringify({ modo, listas, obs }))
@@ -96,6 +114,9 @@ export function ModalRefeicao({
   )
 
   const mesmoLugar = destinoDia === chaveDia(data) && destinoRefeicao === refeicao.id
+
+  const temItensAtivos = pessoasAtivas.some((p) => listas[p].length > 0)
+  const podeSalvarModelo = nomeModelo.trim() !== '' && temItensAtivos && !pendente
 
   function trocarLista(novaLista: ItemEscolhido[]) {
     setListas({ ...listas, [listaAtual]: novaLista })
@@ -160,6 +181,69 @@ export function ModalRefeicao({
     }
   }
 
+  // ----- Modelos -----
+
+  // Guarda o que está na tela como modelo (id = null cria um novo; com id troca o que já existe)
+  function executarSalvarModelo(id: string | null, nome: string) {
+    const r = montarRefeicao(false)
+    onSalvarModelo(id, {
+      nome,
+      modo: r.modo,
+      juntos: r.juntos,
+      nana: r.nana,
+      miguel: r.miguel,
+      obs: r.obs,
+    })
+    setNomeModelo('')
+    setAviso(`Modelo "${nome}" salvo.`)
+  }
+
+  function salvarComoModelo() {
+    if (!podeSalvarModelo) return
+    const nome = nomeModelo.trim()
+    const existente = modelos.find(
+      (m) => m.nome.toLowerCase() === nome.toLowerCase(),
+    )
+    if (existente) {
+      setPedido({ tipo: 'substituirModelo', id: existente.id, nome })
+    } else {
+      executarSalvarModelo(null, nome)
+    }
+  }
+
+  // Coloca o modelo na tela. Só copia os dados pro modal: o modelo original não muda.
+  // Item que sumiu do catálogo é ignorado.
+  function aplicarModelo(modelo: Modelo) {
+    const preparar = (lista: ItemEscolhido[]) =>
+      ordenarEscolhidos(
+        lista.filter((escolhido) => achar(escolhido.item)),
+        catalogo,
+      )
+
+    setModo(modelo.modo)
+    setListas({
+      juntos: preparar(modelo.juntos),
+      nana: preparar(modelo.nana),
+      miguel: preparar(modelo.miguel),
+    })
+    setObs(modelo.obs)
+    setAviso(null)
+  }
+
+  function usarModelo(modelo: Modelo) {
+    const algoNaTela =
+      listas.juntos.length > 0 ||
+      listas.nana.length > 0 ||
+      listas.miguel.length > 0 ||
+      obs.trim() !== ''
+
+    if (algoNaTela) {
+      setPedido({ tipo: 'usarModelo', modelo })
+    } else {
+      aplicarModelo(modelo)
+    }
+  }
+
   function confirmar() {
     const atual = pedido
     setPedido(null)
@@ -167,6 +251,9 @@ export function ModalRefeicao({
     if (atual.tipo === 'apagar') onApagar()
     if (atual.tipo === 'descartar') onFechar()
     if (atual.tipo === 'substituir') executarLevar(atual.mover)
+    if (atual.tipo === 'usarModelo') aplicarModelo(atual.modelo)
+    if (atual.tipo === 'apagarModelo') onApagarModelo(atual.modelo.id)
+    if (atual.tipo === 'substituirModelo') executarSalvarModelo(atual.id, atual.nome)
   }
 
   function descreverPedido(p: Pedido) {
@@ -186,6 +273,36 @@ export function ModalRefeicao({
         mensagem: 'Você mudou coisas e ainda não salvou. Se sair agora, elas serão perdidas.',
         confirmar: 'Descartar',
         cancelar: 'Continuar editando',
+        perigo: true,
+      }
+    }
+
+    if (p.tipo === 'usarModelo') {
+      return {
+        titulo: 'Usar este modelo?',
+        mensagem: `O que está na tela será trocado pelo modelo "${p.modelo.nome}". O modelo em si não muda.`,
+        confirmar: 'Usar modelo',
+        cancelar: 'Cancelar',
+        perigo: false,
+      }
+    }
+
+    if (p.tipo === 'apagarModelo') {
+      return {
+        titulo: 'Apagar modelo?',
+        mensagem: `O modelo "${p.modelo.nome}" será apagado pros dois. As refeições que já foram montadas com ele não mudam. Não dá pra desfazer.`,
+        confirmar: 'Apagar modelo',
+        cancelar: 'Cancelar',
+        perigo: true,
+      }
+    }
+
+    if (p.tipo === 'substituirModelo') {
+      return {
+        titulo: 'Substituir modelo?',
+        mensagem: `Já existe um modelo chamado "${p.nome}". Ele será trocado pelo que está na tela e não dá pra desfazer.`,
+        confirmar: 'Substituir',
+        cancelar: 'Cancelar',
         perigo: true,
       }
     }
@@ -242,6 +359,80 @@ export function ModalRefeicao({
             <X size={18} />
           </button>
         </div>
+
+        <section className='flex flex-col gap-2 rounded-xl bg-white/60 p-3'>
+          <h3 className='font-bold'>Modelos</h3>
+
+          {modelos.length === 0 ? (
+            <p className='text-sm text-leaf-600'>
+              Nenhum modelo ainda. Monte uma refeição e salve como modelo pra reaproveitar depois.
+            </p>
+          ) : (
+            <div className='flex flex-wrap gap-2'>
+              {modelos.map((m) => (
+                <div
+                  key={m.id}
+                  className='flex items-center overflow-hidden rounded-xl bg-white/70'
+                >
+                  <button
+                    type='button'
+                    onClick={() => usarModelo(m)}
+                    className='px-3 py-1 text-sm font-semibold'
+                    title='Usar este modelo'
+                  >
+                    {m.nome}
+                    <span className='font-normal text-leaf-600'>
+                      {' · '}
+                      {m.modo === 'juntos' ? 'Juntos' : 'Separado'}
+                    </span>
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setPedido({ tipo: 'apagarModelo', modelo: m })}
+                    className='px-2 py-1 text-petal-600'
+                    aria-label={`Apagar o modelo ${m.nome}`}
+                    title='Apagar modelo'
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className='flex flex-wrap items-center gap-2'>
+            <input
+              type='text'
+              value={nomeModelo}
+              maxLength={30}
+              onChange={(e) => {
+                setNomeModelo(e.target.value)
+                setAviso(null)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') salvarComoModelo()
+              }}
+              placeholder='Nome do modelo, ex.: Jantar de macarrão'
+              className='min-w-0 flex-1 rounded-lg bg-white px-3 py-1 text-sm outline-none ring-1 ring-leaf-400 focus:ring-2'
+            />
+            <button
+              type='button'
+              onClick={salvarComoModelo}
+              disabled={!podeSalvarModelo}
+              className='flex items-center gap-2 rounded-xl bg-petal-200 px-3 py-1 text-sm font-semibold disabled:opacity-50'
+            >
+              <Bookmark size={16} />
+              Salvar como modelo
+            </button>
+          </div>
+
+          {nomeModelo.trim() !== '' && !temItensAtivos && (
+            <p className='text-sm text-leaf-600'>
+              Escolha pelo menos um item antes de salvar como modelo.
+            </p>
+          )}
+          {aviso && <p className='text-sm font-semibold text-leaf-600'>{aviso}</p>}
+        </section>
 
         <div className='flex flex-wrap items-center gap-2'>
           <button type='button' onClick={() => setModo('juntos')} className={botaoModo('juntos')}>
