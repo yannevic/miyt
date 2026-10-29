@@ -3,7 +3,9 @@ import { onValue, ref, remove, set } from 'firebase/database'
 import { db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
+import { nomesMeses } from './utils/mes'
 import { GradeSemana } from './components/GradeSemana'
+import { Mes } from './components/Mes'
 import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
@@ -18,6 +20,8 @@ type Edicao = {
   refeicao: TipoRefeicao
   editar: boolean
 }
+
+type Tela = 'semana' | 'mes' | 'catalogo'
 
 type DadosBrutos = Record<string, Record<string, Partial<Refeicao>>>
 
@@ -106,7 +110,7 @@ function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
 }
 
 function App() {
-  const [tela, setTela] = useState<'semana' | 'catalogo'>('semana')
+  const [tela, setTela] = useState<Tela>('semana')
   const [dataBase, setDataBase] = useState(new Date())
   const [planejamento, setPlanejamento] = useState<Planejamento>({})
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(catalogoInicial)
@@ -150,6 +154,24 @@ function App() {
     const nova = new Date(dataBase)
     nova.setDate(nova.getDate() + quantidade * 7)
     setDataBase(nova)
+  }
+
+  // Sempre cai no dia 1, pra evitar o JavaScript pular de mês (ex.: 31/01 + 1 mês)
+  function mudarMes(quantidade: number) {
+    setDataBase(new Date(dataBase.getFullYear(), dataBase.getMonth() + quantidade, 1))
+  }
+
+  function mudarPeriodo(quantidade: number) {
+    if (tela === 'mes') {
+      mudarMes(quantidade)
+    } else {
+      mudarSemana(quantidade)
+    }
+  }
+
+  function abrirDiaNaSemana(data: Date) {
+    setDataBase(data)
+    setTela('semana')
   }
 
   function guardarRefeicao(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
@@ -199,6 +221,11 @@ function App() {
   const fim = formatarDiaMes(dias[6])
   const ano = dias[6].getFullYear()
 
+  const titulo =
+    tela === 'mes'
+      ? `${nomesMeses[dataBase.getMonth()]} ${dataBase.getFullYear()}`
+      : `${inicio} a ${fim}/${ano}`
+
   const abaAtiva = 'rounded-xl bg-leaf-600 px-3 py-1 font-semibold text-white'
   const abaInativa = 'rounded-xl bg-white/60 px-3 py-1 font-semibold text-leaf-800'
 
@@ -221,6 +248,12 @@ function App() {
               Semana
             </button>
             <button
+              onClick={() => setTela('mes')}
+              className={tela === 'mes' ? abaAtiva : abaInativa}
+            >
+              Mês
+            </button>
+            <button
               onClick={() => setTela('catalogo')}
               className={tela === 'catalogo' ? abaAtiva : abaInativa}
             >
@@ -228,19 +261,17 @@ function App() {
             </button>
           </div>
 
-          {tela === 'semana' && (
+          {tela !== 'catalogo' && (
             <div className='flex items-center gap-2 text-leaf-800'>
               <button
-                onClick={() => mudarSemana(-1)}
+                onClick={() => mudarPeriodo(-1)}
                 className='rounded-xl bg-white/60 px-3 py-1 font-bold'
               >
                 ‹
               </button>
-              <span className='min-w-48 text-center font-semibold'>
-                {inicio} a {fim}/{ano}
-              </span>
+              <span className='min-w-48 text-center font-semibold'>{titulo}</span>
               <button
-                onClick={() => mudarSemana(1)}
+                onClick={() => mudarPeriodo(1)}
                 className='rounded-xl bg-white/60 px-3 py-1 font-bold'
               >
                 ›
@@ -255,7 +286,7 @@ function App() {
           )}
         </div>
 
-        {tela === 'semana' ? (
+        {tela === 'semana' && (
           <GradeSemana
             dias={dias}
             planejamento={planejamento}
@@ -264,9 +295,17 @@ function App() {
               setEditando({ data, refeicao, editar: !existe })
             }}
           />
-        ) : (
-          <Catalogo />
         )}
+
+        {tela === 'mes' && (
+          <Mes
+            base={dataBase}
+            planejamento={planejamento}
+            onAbrirDia={abrirDiaNaSemana}
+          />
+        )}
+
+        {tela === 'catalogo' && <Catalogo />}
 
         {editando && refeicaoAberta && !editando.editar && (
           <CardapioRefeicao

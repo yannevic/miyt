@@ -9,6 +9,7 @@ import { refeicoes, type Modo, type RefeicaoId, type TipoRefeicao } from '../dat
 import { chaveDia, formatarDataCompleta, nomesDias } from '../utils/datas'
 import { ordenarEscolhidos } from '../utils/ordenar'
 import { formatarDiaMes } from '../utils/semana'
+import { Confirmar } from './Confirmar'
 
 type ModalRefeicaoProps = {
   data: Date
@@ -28,6 +29,12 @@ type ModalRefeicaoProps = {
 }
 
 type Listas = Record<Pessoa, ItemEscolhido[]>
+
+// O que a janelinha de confirmação está perguntando no momento
+type Pedido =
+  | { tipo: 'apagar' }
+  | { tipo: 'descartar' }
+  | { tipo: 'substituir'; mover: boolean }
 
 const nomesPessoas: Record<Pessoa, string> = {
   juntos: 'Juntos',
@@ -73,6 +80,11 @@ export function ModalRefeicao({
   const [categoriaId, setCategoriaId] = useState<CategoriaId>('base')
   const [destinoDia, setDestinoDia] = useState(chaveDia(data))
   const [destinoRefeicao, setDestinoRefeicao] = useState<RefeicaoId>(refeicao.id)
+  const [pedido, setPedido] = useState<Pedido | null>(null)
+
+  // Guarda como o modal estava ao abrir, pra saber se você mudou alguma coisa
+  const [chaveInicial] = useState(() => JSON.stringify({ modo, listas, obs }))
+  const mudou = JSON.stringify({ modo, listas, obs }) !== chaveInicial
 
   const listaAtual: Pessoa = modo === 'juntos' ? 'juntos' : pessoa
   const escolhidos = listas[listaAtual]
@@ -121,18 +133,77 @@ export function ModalRefeicao({
     onSalvar(montarRefeicao())
   }
 
-  function levar(mover: boolean) {
-    if (pendente || mesmoLugar) return
+  // X e Cancelar: se mudou algo, pergunta antes de sair
+  function tentarFechar() {
+    if (mudou) {
+      setPedido({ tipo: 'descartar' })
+    } else {
+      onFechar()
+    }
+  }
+
+  function executarLevar(mover: boolean) {
     const dataDestino = dias.find((d) => chaveDia(d) === destinoDia)
     if (!dataDestino) return
-
-    const jaExiste = Boolean(planejamento[destinoDia]?.[destinoRefeicao])
-    if (jaExiste && !window.confirm('Já existe uma refeição nesse horário. Substituir?')) {
-      return
-    }
-
     onLevar(dataDestino, destinoRefeicao, montarRefeicao(), mover)
   }
+
+  function levar(mover: boolean) {
+    if (pendente || mesmoLugar) return
+    const jaExiste = Boolean(planejamento[destinoDia]?.[destinoRefeicao])
+    if (jaExiste) {
+      setPedido({ tipo: 'substituir', mover })
+    } else {
+      executarLevar(mover)
+    }
+  }
+
+  function confirmar() {
+    const atual = pedido
+    setPedido(null)
+    if (!atual) return
+    if (atual.tipo === 'apagar') onApagar()
+    if (atual.tipo === 'descartar') onFechar()
+    if (atual.tipo === 'substituir') executarLevar(atual.mover)
+  }
+
+  function descreverPedido(p: Pedido) {
+    if (p.tipo === 'apagar') {
+      return {
+        titulo: 'Apagar refeição?',
+        mensagem: `Isso apaga o ${refeicao.nome.toLowerCase()} de ${nomesDias[data.getDay()]} ${formatarDiaMes(data)}. Não dá pra desfazer.`,
+        confirmar: 'Apagar',
+        cancelar: 'Cancelar',
+        perigo: true,
+      }
+    }
+
+    if (p.tipo === 'descartar') {
+      return {
+        titulo: 'Descartar alterações?',
+        mensagem: 'Você mudou coisas e ainda não salvou. Se sair agora, elas serão perdidas.',
+        confirmar: 'Descartar',
+        cancelar: 'Continuar editando',
+        perigo: true,
+      }
+    }
+
+    const nomeDestino = refeicoes.find((r) => r.id === destinoRefeicao)?.nome ?? ''
+    const diaDestino = dias.find((d) => chaveDia(d) === destinoDia)
+    const quando = diaDestino
+      ? `${nomesDias[diaDestino.getDay()]} ${formatarDiaMes(diaDestino)}`
+      : ''
+
+    return {
+      titulo: 'Substituir refeição?',
+      mensagem: `Já existe uma refeição em ${nomeDestino} (${quando}). Ela será substituída e não dá pra desfazer.`,
+      confirmar: 'Substituir',
+      cancelar: 'Cancelar',
+      perigo: true,
+    }
+  }
+
+  const textoPedido = pedido ? descreverPedido(pedido) : null
 
   const botaoModo = (valor: Modo) =>
     modo === valor
@@ -162,7 +233,7 @@ export function ModalRefeicao({
           </div>
           <button
             type='button'
-            onClick={onFechar}
+            onClick={tentarFechar}
             className='rounded-xl bg-white/70 p-2'
             aria-label='Fechar'
           >
@@ -363,7 +434,7 @@ export function ModalRefeicao({
             {inicial && (
               <button
                 type='button'
-                onClick={onApagar}
+                onClick={() => setPedido({ tipo: 'apagar' })}
                 className='rounded-xl bg-white/70 px-4 py-1 font-semibold text-petal-600'
               >
                 Apagar refeição
@@ -373,7 +444,7 @@ export function ModalRefeicao({
           <div className='flex gap-2'>
             <button
               type='button'
-              onClick={onFechar}
+              onClick={tentarFechar}
               className='rounded-xl bg-white/70 px-4 py-1 font-semibold'
             >
               Cancelar
@@ -389,6 +460,18 @@ export function ModalRefeicao({
           </div>
         </div>
       </div>
+
+      {textoPedido && (
+        <Confirmar
+          titulo={textoPedido.titulo}
+          mensagem={textoPedido.mensagem}
+          textoConfirmar={textoPedido.confirmar}
+          textoCancelar={textoPedido.cancelar}
+          perigo={textoPedido.perigo}
+          onConfirmar={confirmar}
+          onCancelar={() => setPedido(null)}
+        />
+      )}
     </div>
   )
 }
