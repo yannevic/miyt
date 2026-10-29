@@ -1,12 +1,14 @@
-import { Plus } from 'lucide-react'
+import { Check, Copy, Plus, Repeat } from 'lucide-react'
 import { categorias } from '../data/catalogo'
 import { useCatalogo } from '../data/catalogoContexto'
 import { icones } from '../data/icones'
+import { iconesRefeicao } from '../data/iconesRefeicao'
 import type {
   ItemEscolhido,
   Pessoa,
   Planejamento,
   Refeicao,
+  Registro,
 } from '../data/planejamento'
 import { refeicoes, type TipoRefeicao } from '../data/refeicoes'
 import { chaveDia, nomesDias } from '../utils/datas'
@@ -17,6 +19,7 @@ type GradeSemanaProps = {
   dias: Date[]
   planejamento: Planejamento
   onAbrir: (data: Date, refeicao: TipoRefeicao) => void
+  onCopiarDia: (data: Date) => void
 }
 
 type CelulaProps = {
@@ -33,6 +36,7 @@ type PopoverProps = {
   titulo: string
   itens: ItemEscolhido[]
   obs: string
+  registro?: Registro
   alinhar: 'esquerda' | 'direita'
   cima: boolean
 }
@@ -50,6 +54,11 @@ const nomesQuem: Record<Pessoa, string> = {
   juntos: 'Juntos',
   nana: 'Nana',
   miguel: 'Miguel',
+}
+
+function textoRegistro(registro: Registro): string {
+  if (registro.status === 'planejado') return 'Comemos como planejado'
+  return registro.real ? `Foi diferente: ${registro.real}` : 'Foi diferente'
 }
 
 function IconesDosItens({ itens }: { itens: ItemEscolhido[] }) {
@@ -77,7 +86,7 @@ function IconesDosItens({ itens }: { itens: ItemEscolhido[] }) {
 }
 
 // Cartão de vidro com a refeição completa, que aparece ao passar o mouse
-function Popover({ quem, titulo, itens, obs, alinhar, cima }: PopoverProps) {
+function Popover({ quem, titulo, itens, obs, registro, alinhar, cima }: PopoverProps) {
   const { itens: catalogo, achar } = useCatalogo()
   const ordenados = ordenarEscolhidos(itens, catalogo)
 
@@ -130,6 +139,12 @@ function Popover({ quem, titulo, itens, obs, alinhar, cima }: PopoverProps) {
           {obs}
         </p>
       )}
+
+      {registro && (
+        <p className='mt-2 whitespace-normal break-words border-t border-leaf-600/20 pt-2 text-xs font-semibold'>
+          {textoRegistro(registro)}
+        </p>
+      )}
     </div>
   )
 }
@@ -145,6 +160,8 @@ function Celula({ refeicao, nomeRefeicao, hoje, coluna, linha, onClick }: Celula
   // Colunas do fim da semana abrem o cartão pra esquerda; as duas últimas linhas abrem pra cima
   const alinhar = coluna >= 4 ? 'direita' : 'esquerda'
   const cima = linha >= 2
+
+  const registro = refeicao?.registro
 
   return (
     <div
@@ -175,6 +192,7 @@ function Celula({ refeicao, nomeRefeicao, hoje, coluna, linha, onClick }: Celula
             titulo={nomeRefeicao}
             itens={refeicao.juntos}
             obs={refeicao.obs}
+            registro={registro}
             alinhar={alinhar}
             cima={cima}
           />
@@ -190,6 +208,7 @@ function Celula({ refeicao, nomeRefeicao, hoje, coluna, linha, onClick }: Celula
               titulo={nomeRefeicao}
               itens={refeicao.nana}
               obs={refeicao.obs}
+              registro={registro}
               alinhar={alinhar}
               cima={cima}
             />
@@ -201,21 +220,58 @@ function Celula({ refeicao, nomeRefeicao, hoje, coluna, linha, onClick }: Celula
               titulo={nomeRefeicao}
               itens={refeicao.miguel}
               obs={refeicao.obs}
+              registro={registro}
               alinhar={alinhar}
               cima={cima}
             />
           </div>
         </div>
       )}
+
+      {registro && (
+        <span
+          title={textoRegistro(registro)}
+          className={`absolute right-1 top-1 z-10 flex h-4 w-4 items-center justify-center rounded-full text-white ${
+            registro.status === 'planejado' ? 'bg-leaf-600' : 'bg-bark-700'
+          }`}
+        >
+          {registro.status === 'planejado' ? <Check size={10} /> : <Repeat size={10} />}
+        </span>
+      )}
     </div>
   )
 }
 
-export function GradeSemana({ dias, planejamento, onAbrir }: GradeSemanaProps) {
+export function GradeSemana({ dias, planejamento, onAbrir, onCopiarDia }: GradeSemanaProps) {
   const hoje = new Date().toDateString()
+
+  // Resumo da semana: quantas refeições foram como planejado, diferentes ou ainda sem registro
+  const agora = new Date()
+  let comoPlanejado = 0
+  let diferentes = 0
+  let semRegistro = 0
+  for (const data of dias) {
+    const doDia = planejamento[chaveDia(data)]
+    if (!doDia) continue
+    for (const r of refeicoes) {
+      const refeicao = doDia[r.id]
+      if (!refeicao) continue
+      if (refeicao.registro?.status === 'planejado') comoPlanejado++
+      else if (refeicao.registro?.status === 'diferente') diferentes++
+      else if (data <= agora) semRegistro++
+    }
+  }
+  const mostrarResumo = comoPlanejado + diferentes + semRegistro > 0
 
   return (
     <div className='flex flex-col gap-2 p-4'>
+      {mostrarResumo && (
+        <p className='px-1 text-sm text-leaf-600'>
+          Registro da semana: {comoPlanejado} como planejado · {diferentes} diferentes ·{' '}
+          {semRegistro} sem registro
+        </p>
+      )}
+
       <div className={colunas}>
         <div></div>
         {dias.map((data) => (
@@ -223,34 +279,47 @@ export function GradeSemana({ dias, planejamento, onAbrir }: GradeSemanaProps) {
             key={data.toISOString()}
             className={
               data.toDateString() === hoje
-                ? 'rounded-xl bg-petal-200 p-2 text-center text-leaf-800 ring-2 ring-petal-600'
-                : 'rounded-xl bg-white/60 p-2 text-center text-leaf-800'
+                ? 'relative rounded-xl bg-petal-200 p-2 text-center text-leaf-800 ring-2 ring-petal-600'
+                : 'relative rounded-xl bg-white/60 p-2 text-center text-leaf-800'
             }
           >
+            <button
+              type='button'
+              onClick={() => onCopiarDia(data)}
+              title='Copiar este dia'
+              aria-label={`Copiar o dia ${formatarDiaMes(data)}`}
+              className='absolute right-1 top-1 rounded-md p-1 text-leaf-600 opacity-60 transition hover:bg-white/70 hover:opacity-100'
+            >
+              <Copy size={14} />
+            </button>
             <p className='font-bold'>{nomesDias[data.getDay()]}</p>
             <p className='text-sm'>{formatarDiaMes(data)}</p>
           </div>
         ))}
       </div>
 
-      {refeicoes.map((refeicao, linha) => (
-        <div key={refeicao.id} className={colunas}>
-          <div className='flex items-center font-semibold text-leaf-800'>
-            {refeicao.nome}
+      {refeicoes.map((refeicao, linha) => {
+        const IconeRefeicao = iconesRefeicao[refeicao.id]
+        return (
+          <div key={refeicao.id} className={colunas}>
+            <div className='flex items-center gap-2 font-semibold text-leaf-800'>
+              <IconeRefeicao size={18} />
+              {refeicao.nome}
+            </div>
+            {dias.map((data, coluna) => (
+              <Celula
+                key={data.toISOString()}
+                refeicao={planejamento[chaveDia(data)]?.[refeicao.id]}
+                nomeRefeicao={refeicao.nome}
+                hoje={data.toDateString() === hoje}
+                coluna={coluna}
+                linha={linha}
+                onClick={() => onAbrir(data, refeicao)}
+              />
+            ))}
           </div>
-          {dias.map((data, coluna) => (
-            <Celula
-              key={data.toISOString()}
-              refeicao={planejamento[chaveDia(data)]?.[refeicao.id]}
-              nomeRefeicao={refeicao.nome}
-              hoje={data.toDateString() === hoje}
-              coluna={coluna}
-              linha={linha}
-              onClick={() => onAbrir(data, refeicao)}
-            />
-          ))}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

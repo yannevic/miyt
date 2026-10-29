@@ -1,7 +1,7 @@
 import { useCatalogo } from '../data/catalogoContexto'
 import { iconesRefeicao } from '../data/iconesRefeicao'
 import type { ItemCatalogo } from '../data/catalogo'
-import type { ItemEscolhido, Planejamento, Refeicao } from '../data/planejamento'
+import type { ItemEscolhido, Planejamento, Refeicao, Registro } from '../data/planejamento'
 import { refeicoes } from '../data/refeicoes'
 import { chaveDia, nomesDias } from '../utils/datas'
 import { diasDoMes } from '../utils/mes'
@@ -41,6 +41,11 @@ function textoItens(itens: ItemEscolhido[], catalogo: ItemCatalogo[], achar: Ach
     }
   }
   return nomes.join(', ') || 'Nada planejado'
+}
+
+function textoRegistro(registro: Registro): string {
+  if (registro.status === 'planejado') return 'Comemos como planejado'
+  return registro.real ? `Foi diferente: ${registro.real}` : 'Foi diferente'
 }
 
 function Barra({ refeicao }: { refeicao?: Refeicao }) {
@@ -145,6 +150,12 @@ function CelulaDia({ data, doMes, hoje, coluna, linha, doDia, onClick }: CelulaD
                   {refeicao.obs && (
                     <p className='whitespace-normal break-words text-xs italic'>
                       {refeicao.obs}
+                    </p>
+                  )}
+
+                  {refeicao.registro && (
+                    <p className='whitespace-normal break-words text-xs font-semibold text-leaf-600'>
+                      {textoRegistro(refeicao.registro)}
                     </p>
                   )}
                 </div>

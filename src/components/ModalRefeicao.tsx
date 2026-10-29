@@ -117,20 +117,22 @@ export function ModalRefeicao({
     trocarLista(escolhidos.filter((_, i) => i !== posicao))
   }
 
-  // Monta a refeição só com o modo ativo; as listas do outro modo vão vazias
-  function montarRefeicao(): Refeicao {
+  // Monta a refeição só com o modo ativo; as listas do outro modo vão vazias.
+  // comRegistro: guarda o registro de 'como foi' (ao salvar e ao mover, sim; ao copiar, não)
+  function montarRefeicao(comRegistro: boolean): Refeicao {
     return {
       modo,
       juntos: modo === 'juntos' ? limparDetalhes(listas.juntos) : [],
       nana: modo === 'separado' ? limparDetalhes(listas.nana) : [],
       miguel: modo === 'separado' ? limparDetalhes(listas.miguel) : [],
       obs: obs.trim(),
+      registro: comRegistro ? inicial?.registro : undefined,
     }
   }
 
   function salvar() {
     if (pendente) return
-    onSalvar(montarRefeicao())
+    onSalvar(montarRefeicao(true))
   }
 
   // X e Cancelar: se mudou algo, pergunta antes de sair
@@ -145,7 +147,7 @@ export function ModalRefeicao({
   function executarLevar(mover: boolean) {
     const dataDestino = dias.find((d) => chaveDia(d) === destinoDia)
     if (!dataDestino) return
-    onLevar(dataDestino, destinoRefeicao, montarRefeicao(), mover)
+    onLevar(dataDestino, destinoRefeicao, montarRefeicao(mover), mover)
   }
 
   function levar(mover: boolean) {
@@ -222,7 +224,7 @@ export function ModalRefeicao({
   const itensDaCategoria = catalogo.filter((item) => item.categoria === categoriaId)
 
   return (
-    <div className='fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-soil-900/40 p-4'>
+    <div className='fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-soil-900/40 p-4 backdrop-blur-sm'>
       <div className='flex w-full max-w-2xl flex-col gap-4 rounded-2xl bg-bark-100 p-5 text-leaf-800 shadow-xl'>
         <div className='flex items-start justify-between'>
           <div>

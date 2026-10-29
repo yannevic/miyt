@@ -25,3 +25,27 @@
   --color-lilac-400: #B9A3E3;
   --color-lilac-200: #E3D9F5;
 }
+
+/* Polimento visual */
+body {
+  background-color: #f5ecd7;
+  color: #2d4a2d;
+}
+
+button:not(:disabled),
+[role='button'] {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid #4a7a4a;
+  outline-offset: 2px;
+}
+
+::selection {
+  background-color: #f5d5dc;
+}

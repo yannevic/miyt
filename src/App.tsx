@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { Copy, LogOut } from 'lucide-react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
-import { onValue, ref, remove, set } from 'firebase/database'
+import { onValue, ref, remove, set, update } from 'firebase/database'
 import { auth, db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
@@ -11,17 +11,23 @@ import { Mes } from './components/Mes'
 import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
+import { CopiarDialogo } from './components/CopiarDialogo'
 import { Login } from './components/Login'
 import { catalogoInicial, type CategoriaId, type ItemCatalogo } from './data/catalogo'
 import { CatalogoContexto } from './data/catalogoContexto'
 import { icones } from './data/icones'
-import type { Planejamento, Refeicao } from './data/planejamento'
-import type { Modo, RefeicaoId, TipoRefeicao } from './data/refeicoes'
+import type { Planejamento, Refeicao, Registro } from './data/planejamento'
+import type { RefeicaoId, TipoRefeicao } from './data/refeicoes'
 
 type Edicao = {
   data: Date
   refeicao: TipoRefeicao
   editar: boolean
+}
+
+type Copia = {
+  tipo: 'dia' | 'semana'
+  origem: Date
 }
 
 type Tela = 'semana' | 'mes' | 'catalogo'
@@ -44,13 +50,23 @@ function normalizar(bruto: DadosBrutos | null): Planejamento {
 
     for (const id of Object.keys(bruto[dia]) as RefeicaoId[]) {
       const r = bruto[dia][id]
-      const modo: Modo = r.modo ?? 'juntos'
+
+      // Sem 'modo' não é uma refeição de verdade (pode sobrar só o registro de uma refeição apagada)
+      if (!r.modo) continue
+
+      const status = r.registro?.status
+      const registro: Registro | undefined =
+        status === 'planejado' || status === 'diferente'
+          ? { status, real: r.registro?.real || undefined }
+          : undefined
+
       refeicoesDoDia[id] = {
-        modo,
+        modo: r.modo,
         juntos: r.juntos ?? [],
         nana: r.nana ?? [],
         miguel: r.miguel ?? [],
         obs: r.obs ?? '',
+        registro,
       }
     }
 
@@ -117,6 +133,21 @@ function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
   }
 }
 
+// Grava (ou limpa) só o registro de 'como foi' de uma refeição
+function registrar(data: Date, id: RefeicaoId, registro: Registro | undefined) {
+  const endereco = ref(db, `dias/${chaveDia(data)}/${id}/registro`)
+
+  if (registro) {
+    set(endereco, JSON.parse(JSON.stringify(registro))).catch((erro) =>
+      console.error('Erro ao salvar o registro no Firebase:', erro),
+    )
+  } else {
+    remove(endereco).catch((erro) =>
+      console.error('Erro ao limpar o registro no Firebase:', erro),
+    )
+  }
+}
+
 // O app de verdade: só aparece depois que alguém entrou
 function Principal({ email, onSair }: PrincipalProps) {
   const [tela, setTela] = useState<Tela>('semana')
@@ -124,6 +155,7 @@ function Principal({ email, onSair }: PrincipalProps) {
   const [planejamento, setPlanejamento] = useState<Planejamento>({})
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(catalogoInicial)
   const [editando, setEditando] = useState<Edicao | null>(null)
+  const [copiando, setCopiando] = useState<Copia | null>(null)
   const dias = diaDaSemana(dataBase)
 
   useEffect(() => {
@@ -203,6 +235,70 @@ function Principal({ email, onSair }: PrincipalProps) {
     setEditando(null)
   }
 
+  // Monta a cópia de um dia (ou de uma semana inteira) sem gravar nada ainda.
+  // Devolve quantas refeições existem na origem, quantas já têm algo no destino
+  // e os caminhos do Firebase que seriam gravados.
+  function montarCopia(
+    tipo: 'dia' | 'semana',
+    origem: Date,
+    destino: Date,
+    substituir: boolean,
+  ) {
+    const origens = tipo === 'semana' ? diaDaSemana(origem) : [origem]
+    const inicioDestino = tipo === 'semana' ? diaDaSemana(destino)[0] : destino
+
+    let total = 0
+    let ocupadas = 0
+    const atualizacoes: Record<string, unknown> = {}
+
+    origens.forEach((dataOrigem, i) => {
+      const doDia = planejamento[chaveDia(dataOrigem)]
+      if (!doDia) return
+
+      const dataDestino = new Date(inicioDestino)
+      dataDestino.setDate(inicioDestino.getDate() + i)
+      const chaveDestino = chaveDia(dataDestino)
+
+      for (const id of Object.keys(doDia) as RefeicaoId[]) {
+        const refeicao = doDia[id]
+        if (!refeicao) continue
+
+        total++
+        const ocupado = Boolean(planejamento[chaveDestino]?.[id])
+        if (ocupado) ocupadas++
+        if (ocupado && !substituir) continue
+
+        // Copia só o planejado: o registro de 'como foi' não vai junto
+        atualizacoes[`dias/${chaveDestino}/${id}`] = JSON.parse(
+          JSON.stringify({
+            modo: refeicao.modo,
+            juntos: refeicao.juntos,
+            nana: refeicao.nana,
+            miguel: refeicao.miguel,
+            obs: refeicao.obs,
+          }),
+        )
+      }
+    })
+
+    return { total, ocupadas, atualizacoes }
+  }
+
+  function confirmarCopia(destino: Date, substituir: boolean) {
+    if (!copiando) return
+    const { atualizacoes } = montarCopia(copiando.tipo, copiando.origem, destino, substituir)
+
+    if (Object.keys(atualizacoes).length > 0) {
+      // update com vários caminhos grava tudo de uma vez
+      update(ref(db), atualizacoes).catch((erro) =>
+        console.error('Erro ao copiar no Firebase:', erro),
+      )
+    }
+
+    setDataBase(destino)
+    setCopiando(null)
+  }
+
   // Cadastra um item novo, sempre ANTES do 'Outro' da categoria
   function cadastrarItem(nome: string, categoria: CategoriaId, icone: string) {
     const novo: ItemCatalogo = { id: criarId(nome, catalogo), nome, categoria, icone }
@@ -247,8 +343,8 @@ function Principal({ email, onSair }: PrincipalProps) {
       }}
     >
       <div className='bg-bark-100 min-h-screen'>
-        <div className='flex items-center justify-between p-4'>
-          <div className='flex items-center gap-4'>
+        <div className='flex flex-wrap items-center justify-between gap-3 p-4'>
+          <div className='flex flex-wrap items-center gap-4'>
             <h1 className='text-leaf-800 text-4xl font-bold'>Miyt</h1>
             <button
               onClick={() => setTela('semana')}
@@ -270,11 +366,12 @@ function Principal({ email, onSair }: PrincipalProps) {
             </button>
           </div>
 
-          <div className='flex items-center gap-4'>
+          <div className='flex flex-wrap items-center gap-4'>
             {tela !== 'catalogo' && (
-              <div className='flex items-center gap-2 text-leaf-800'>
+              <div className='flex flex-wrap items-center gap-2 text-leaf-800'>
                 <button
                   onClick={() => mudarPeriodo(-1)}
+                  aria-label={tela === 'mes' ? 'Mês anterior' : 'Semana anterior'}
                   className='rounded-xl bg-white/60 px-3 py-1 font-bold'
                 >
                   ‹
@@ -282,6 +379,7 @@ function Principal({ email, onSair }: PrincipalProps) {
                 <span className='min-w-48 text-center font-semibold'>{titulo}</span>
                 <button
                   onClick={() => mudarPeriodo(1)}
+                  aria-label={tela === 'mes' ? 'Próximo mês' : 'Próxima semana'}
                   className='rounded-xl bg-white/60 px-3 py-1 font-bold'
                 >
                   ›
@@ -292,6 +390,16 @@ function Principal({ email, onSair }: PrincipalProps) {
                 >
                   Hoje
                 </button>
+                {tela === 'semana' && (
+                  <button
+                    type='button'
+                    onClick={() => setCopiando({ tipo: 'semana', origem: dataBase })}
+                    className='flex items-center gap-2 rounded-xl bg-white/60 px-3 py-1 font-semibold'
+                  >
+                    <Copy size={16} />
+                    Copiar semana
+                  </button>
+                )}
               </div>
             )}
 
@@ -315,6 +423,7 @@ function Principal({ email, onSair }: PrincipalProps) {
               const existe = Boolean(planejamento[chaveDia(data)]?.[refeicao.id])
               setEditando({ data, refeicao, editar: !existe })
             }}
+            onCopiarDia={(data) => setCopiando({ tipo: 'dia', origem: data })}
           />
         )}
 
@@ -334,6 +443,9 @@ function Principal({ email, onSair }: PrincipalProps) {
             refeicao={editando.refeicao}
             dados={refeicaoAberta}
             onEditar={() => setEditando({ ...editando, editar: true })}
+            onRegistrar={(registro) =>
+              registrar(editando.data, editando.refeicao.id, registro)
+            }
             onFechar={() => setEditando(null)}
           />
         )}
@@ -352,6 +464,24 @@ function Principal({ email, onSair }: PrincipalProps) {
             onLevar={levarRefeicao}
             onApagar={() => guardarRefeicao(editando.data, editando.refeicao.id, null)}
             onFechar={() => setEditando(null)}
+          />
+        )}
+
+        {copiando && (
+          <CopiarDialogo
+            tipo={copiando.tipo}
+            origem={copiando.origem}
+            simular={(destino) => {
+              const { total, ocupadas } = montarCopia(
+                copiando.tipo,
+                copiando.origem,
+                destino,
+                false,
+              )
+              return { total, ocupadas }
+            }}
+            onConfirmar={confirmarCopia}
+            onFechar={() => setCopiando(null)}
           />
         )}
       </div>
