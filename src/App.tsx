@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import { LogOut } from 'lucide-react'
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { onValue, ref, remove, set } from 'firebase/database'
-import { db } from './firebase'
+import { auth, db } from './firebase'
 import { diaDaSemana, formatarDiaMes } from './utils/semana'
 import { chaveDia } from './utils/datas'
 import { nomesMeses } from './utils/mes'
@@ -9,6 +11,7 @@ import { Mes } from './components/Mes'
 import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
+import { Login } from './components/Login'
 import { catalogoInicial, type CategoriaId, type ItemCatalogo } from './data/catalogo'
 import { CatalogoContexto } from './data/catalogoContexto'
 import { icones } from './data/icones'
@@ -24,6 +27,11 @@ type Edicao = {
 type Tela = 'semana' | 'mes' | 'catalogo'
 
 type DadosBrutos = Record<string, Record<string, Partial<Refeicao>>>
+
+type PrincipalProps = {
+  email: string | null
+  onSair: () => void
+}
 
 // O Firebase não guarda listas vazias, então os campos podem faltar.
 // Aqui a gente completa o que falta pra ficar no formato do app.
@@ -109,7 +117,8 @@ function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
   }
 }
 
-function App() {
+// O app de verdade: só aparece depois que alguém entrou
+function Principal({ email, onSair }: PrincipalProps) {
   const [tela, setTela] = useState<Tela>('semana')
   const [dataBase, setDataBase] = useState(new Date())
   const [planejamento, setPlanejamento] = useState<Planejamento>({})
@@ -261,29 +270,41 @@ function App() {
             </button>
           </div>
 
-          {tela !== 'catalogo' && (
-            <div className='flex items-center gap-2 text-leaf-800'>
-              <button
-                onClick={() => mudarPeriodo(-1)}
-                className='rounded-xl bg-white/60 px-3 py-1 font-bold'
-              >
-                ‹
-              </button>
-              <span className='min-w-48 text-center font-semibold'>{titulo}</span>
-              <button
-                onClick={() => mudarPeriodo(1)}
-                className='rounded-xl bg-white/60 px-3 py-1 font-bold'
-              >
-                ›
-              </button>
-              <button
-                onClick={() => setDataBase(new Date())}
-                className='rounded-xl bg-petal-200 px-3 py-1 font-semibold'
-              >
-                Hoje
-              </button>
-            </div>
-          )}
+          <div className='flex items-center gap-4'>
+            {tela !== 'catalogo' && (
+              <div className='flex items-center gap-2 text-leaf-800'>
+                <button
+                  onClick={() => mudarPeriodo(-1)}
+                  className='rounded-xl bg-white/60 px-3 py-1 font-bold'
+                >
+                  ‹
+                </button>
+                <span className='min-w-48 text-center font-semibold'>{titulo}</span>
+                <button
+                  onClick={() => mudarPeriodo(1)}
+                  className='rounded-xl bg-white/60 px-3 py-1 font-bold'
+                >
+                  ›
+                </button>
+                <button
+                  onClick={() => setDataBase(new Date())}
+                  className='rounded-xl bg-petal-200 px-3 py-1 font-semibold'
+                >
+                  Hoje
+                </button>
+              </div>
+            )}
+
+            <button
+              type='button'
+              onClick={onSair}
+              title={email ? `Sair (${email})` : 'Sair'}
+              className='flex items-center gap-2 rounded-xl bg-white/60 px-3 py-1 font-semibold text-leaf-800'
+            >
+              <LogOut size={16} />
+              Sair
+            </button>
+          </div>
         </div>
 
         {tela === 'semana' && (
@@ -336,6 +357,31 @@ function App() {
       </div>
     </CatalogoContexto.Provider>
   )
+}
+
+// A "portaria": decide se mostra o login ou o app
+function App() {
+  // undefined = ainda descobrindo se tem alguém logado; null = ninguém logado
+  const [usuario, setUsuario] = useState<User | null | undefined>(undefined)
+
+  useEffect(() => {
+    const parar = onAuthStateChanged(auth, (u) => setUsuario(u))
+    return parar
+  }, [])
+
+  if (usuario === undefined) {
+    return (
+      <div className='flex min-h-screen items-center justify-center bg-bark-100 text-leaf-800'>
+        Carregando...
+      </div>
+    )
+  }
+
+  if (usuario === null) {
+    return <Login />
+  }
+
+  return <Principal email={usuario.email} onSair={() => signOut(auth)} />
 }
 
 export default App
