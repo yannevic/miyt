@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Copy, LogOut } from 'lucide-react'
+import { Copy, FileText, LogOut } from 'lucide-react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { onValue, push, ref, remove, set, update } from 'firebase/database'
 import { auth, db } from './firebase'
@@ -12,6 +12,7 @@ import { Catalogo } from './components/Catalogo'
 import { CardapioRefeicao } from './components/CardapioRefeicao'
 import { ModalRefeicao } from './components/ModalRefeicao'
 import { CopiarDialogo } from './components/CopiarDialogo'
+import { ExportarDialogo } from './components/ExportarDialogo'
 import { Login } from './components/Login'
 import { catalogoInicial, type CategoriaId, type ItemCatalogo } from './data/catalogo'
 import { CatalogoContexto } from './data/catalogoContexto'
@@ -54,19 +55,15 @@ function normalizar(bruto: DadosBrutos | null): Planejamento {
 
   for (const dia of Object.keys(bruto)) {
     const refeicoesDoDia: Partial<Record<RefeicaoId, Refeicao>> = {}
-
     for (const id of Object.keys(bruto[dia]) as RefeicaoId[]) {
       const r = bruto[dia][id]
-
       // Sem 'modo' não é uma refeição de verdade (pode sobrar só o registro de uma refeição apagada)
       if (!r.modo) continue
-
       const status = r.registro?.status
       const registro: Registro | undefined =
         status === 'planejado' || status === 'diferente'
           ? { status, real: r.registro?.real || undefined }
           : undefined
-
       refeicoesDoDia[id] = {
         modo: r.modo,
         juntos: r.juntos ?? [],
@@ -76,10 +73,8 @@ function normalizar(bruto: DadosBrutos | null): Planejamento {
         registro,
       }
     }
-
     resultado[dia] = refeicoesDoDia
   }
-
   return resultado
 }
 
@@ -90,7 +85,6 @@ function normalizarCatalogo(bruto: unknown): ItemCatalogo[] {
   const lista: unknown[] = Array.isArray(bruto)
     ? bruto
     : Object.values(bruto as Record<string, unknown>)
-
   return lista.filter((x): x is ItemCatalogo => {
     if (typeof x !== 'object' || x === null) return false
     const o = x as Record<string, unknown>
@@ -110,7 +104,6 @@ function normalizarItens(bruto: unknown): ItemEscolhido[] {
   const lista: unknown[] = Array.isArray(bruto)
     ? bruto
     : Object.values(bruto as Record<string, unknown>)
-
   const resultado: ItemEscolhido[] = []
   for (const x of lista) {
     if (typeof x !== 'object' || x === null) continue
@@ -129,17 +122,14 @@ function normalizarItens(bruto: unknown): ItemEscolhido[] {
 // Aqui viram uma lista, completando o que falta e ordenada pelo nome.
 function normalizarModelos(bruto: unknown): Modelo[] {
   if (!bruto || typeof bruto !== 'object') return []
-
   const resultado: Modelo[] = []
   for (const [id, valor] of Object.entries(bruto as Record<string, unknown>)) {
     if (typeof valor !== 'object' || valor === null) continue
     const o = valor as Record<string, unknown>
     if (typeof o.nome !== 'string') continue
-
     const modo: Modo | null =
       o.modo === 'juntos' || o.modo === 'separado' ? o.modo : null
     if (!modo) continue
-
     resultado.push({
       id,
       nome: o.nome,
@@ -150,7 +140,6 @@ function normalizarModelos(bruto: unknown): Modelo[] {
       obs: typeof o.obs === 'string' ? o.obs : '',
     })
   }
-
   return resultado.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
 }
 
@@ -164,7 +153,6 @@ function criarId(nome: string, existentes: ItemCatalogo[]): string {
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'item'
-
   let id = base
   let n = 2
   while (existentes.some((item) => item.id === id)) {
@@ -177,7 +165,6 @@ function criarId(nome: string, existentes: ItemCatalogo[]): string {
 // Grava (ou apaga, se refeicao for null) uma refeição no Firebase
 function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
   const endereco = ref(db, `dias/${chaveDia(data)}/${id}`)
-
   if (refeicao) {
     // JSON.parse(JSON.stringify(...)) tira os campos undefined, que o Firebase não aceita
     set(endereco, JSON.parse(JSON.stringify(refeicao))).catch((erro) =>
@@ -193,7 +180,6 @@ function gravar(data: Date, id: RefeicaoId, refeicao: Refeicao | null) {
 // Grava (ou limpa) só o registro de 'como foi' de uma refeição
 function registrar(data: Date, id: RefeicaoId, registro: Registro | undefined) {
   const endereco = ref(db, `dias/${chaveDia(data)}/${id}/registro`)
-
   if (registro) {
     set(endereco, JSON.parse(JSON.stringify(registro))).catch((erro) =>
       console.error('Erro ao salvar o registro no Firebase:', erro),
@@ -209,7 +195,6 @@ function registrar(data: Date, id: RefeicaoId, registro: Registro | undefined) {
 // push(ref) pede ao Firebase um endereço novo e único (um id que ninguém mais tem).
 function gravarModelo(id: string | null, dados: ModeloDados) {
   const endereco = id ? ref(db, `modelos/${id}`) : push(ref(db, 'modelos'))
-
   set(endereco, JSON.parse(JSON.stringify(dados))).catch((erro) =>
     console.error('Erro ao salvar o modelo no Firebase:', erro),
   )
@@ -230,6 +215,7 @@ function Principal({ email, onSair }: PrincipalProps) {
   const [modelos, setModelos] = useState<Modelo[]>([])
   const [editando, setEditando] = useState<Edicao | null>(null)
   const [copiando, setCopiando] = useState<Copia | null>(null)
+  const [exportando, setExportando] = useState(false)
   const dias = diaDaSemana(dataBase)
 
   useEffect(() => {
@@ -248,7 +234,6 @@ function Principal({ email, onSair }: PrincipalProps) {
       ref(db, 'catalogo'),
       (snapshot) => {
         const valor = snapshot.val()
-
         // Banco ainda sem catálogo: grava o catálogo inicial lá (só acontece na primeira vez)
         if (valor === null) {
           set(ref(db, 'catalogo'), JSON.parse(JSON.stringify(catalogoInicial))).catch(
@@ -256,7 +241,6 @@ function Principal({ email, onSair }: PrincipalProps) {
           )
           return
         }
-
         const lista = normalizarCatalogo(valor)
         if (lista.length > 0) setCatalogo(lista)
       },
@@ -347,7 +331,6 @@ function Principal({ email, onSair }: PrincipalProps) {
       for (const id of Object.keys(doDia) as RefeicaoId[]) {
         const refeicao = doDia[id]
         if (!refeicao) continue
-
         total++
         const ocupado = Boolean(planejamento[chaveDestino]?.[id])
         if (ocupado) ocupadas++
@@ -372,14 +355,12 @@ function Principal({ email, onSair }: PrincipalProps) {
   function confirmarCopia(destino: Date, substituir: boolean) {
     if (!copiando) return
     const { atualizacoes } = montarCopia(copiando.tipo, copiando.origem, destino, substituir)
-
     if (Object.keys(atualizacoes).length > 0) {
       // update com vários caminhos grava tudo de uma vez
       update(ref(db), atualizacoes).catch((erro) =>
         console.error('Erro ao copiar no Firebase:', erro),
       )
     }
-
     setDataBase(destino)
     setCopiando(null)
   }
@@ -391,13 +372,11 @@ function Principal({ email, onSair }: PrincipalProps) {
     const posicaoDoOutro = lista.findIndex(
       (item) => item.categoria === categoria && item.pedeNome,
     )
-
     if (posicaoDoOutro === -1) {
       lista.push(novo)
     } else {
       lista.splice(posicaoDoOutro, 0, novo)
     }
-
     set(ref(db, 'catalogo'), JSON.parse(JSON.stringify(lista))).catch((erro) =>
       console.error('Erro ao salvar o catálogo no Firebase:', erro),
     )
@@ -410,7 +389,6 @@ function Principal({ email, onSair }: PrincipalProps) {
   const inicio = formatarDiaMes(dias[0])
   const fim = formatarDiaMes(dias[6])
   const ano = dias[6].getFullYear()
-
   const titulo =
     tela === 'mes'
       ? `${nomesMeses[dataBase.getMonth()]} ${dataBase.getFullYear()}`
@@ -485,9 +463,16 @@ function Principal({ email, onSair }: PrincipalProps) {
                     Copiar semana
                   </button>
                 )}
+                <button
+                  type='button'
+                  onClick={() => setExportando(true)}
+                  className='flex items-center gap-2 rounded-xl bg-white/60 px-3 py-1 font-semibold'
+                >
+                  <FileText size={16} />
+                  Exportar
+                </button>
               </div>
             )}
-
             <button
               type='button'
               onClick={onSair}
@@ -511,7 +496,6 @@ function Principal({ email, onSair }: PrincipalProps) {
             onCopiarDia={(data) => setCopiando({ tipo: 'dia', origem: data })}
           />
         )}
-
         {tela === 'mes' && (
           <Mes
             base={dataBase}
@@ -519,7 +503,6 @@ function Principal({ email, onSair }: PrincipalProps) {
             onAbrirDia={abrirDiaNaSemana}
           />
         )}
-
         {tela === 'catalogo' && <Catalogo />}
 
         {editando && refeicaoAberta && !editando.editar && (
@@ -570,6 +553,15 @@ function Principal({ email, onSair }: PrincipalProps) {
             }}
             onConfirmar={confirmarCopia}
             onFechar={() => setCopiando(null)}
+          />
+        )}
+
+        {exportando && (
+          <ExportarDialogo
+            base={dataBase}
+            planejamento={planejamento}
+            catalogo={catalogo}
+            onFechar={() => setExportando(false)}
           />
         )}
       </div>
