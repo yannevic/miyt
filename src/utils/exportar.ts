@@ -34,8 +34,8 @@ function textoItens(lista: ItemEscolhido[], catalogo: ItemCatalogo[]): string {
   for (const escolhido of lista) {
     const achado = catalogo.find((c) => c.id === escolhido.item)
     if (!achado) continue
-    if (achado.nome === 'Outro') {
-      partes.push(escolhido.detalhe ?? 'Outro')
+    if (achado.pedeNome) {
+      partes.push(escolhido.detalhe ?? achado.nome)
     } else if (escolhido.detalhe) {
       partes.push(achado.nome + ' (' + escolhido.detalhe + ')')
     } else {
