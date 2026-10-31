@@ -22,7 +22,7 @@ const pessoas: { id: QuemExportar; nome: string }[] = [
   { id: 'miguel', nome: 'Miguel' },
 ]
 
-function ExportarDialogo({ base, planejamento, catalogo, onFechar }: ExportarDialogoProps) {
+export function ExportarDialogo({ base, planejamento, catalogo, onFechar }: ExportarDialogoProps) {
   const [periodo, setPeriodo] = useState<PeriodoExportar>('semana')
   const [quem, setQuem] = useState<QuemExportar>('ambos')
   const [incluirRegistro, setIncluirRegistro] = useState(true)
@@ -132,5 +132,3 @@ function ExportarDialogo({ base, planejamento, catalogo, onFechar }: ExportarDia
     </div>
   )
 }
-
-export default ExportarDialogo
